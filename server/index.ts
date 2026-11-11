@@ -10,6 +10,7 @@ import type { Booking, Car } from '../src/types/car.ts';
 
 type Role = 'admin' | 'manager' | 'staff';
 type BookingStatus = 'pending' | 'confirmed' | 'active' | 'completed' | 'cancelled';
+type DurationUnit = 'day' | 'hour';
 type AuthUser = { id: string; name: string; email: string; role: Role };
 type AuthRequest = Request & { authUser?: AuthUser };
 
@@ -84,6 +85,28 @@ const isDate = (value: unknown): value is string =>
   !Number.isNaN(Date.parse(`${value}T00:00:00.000Z`)) &&
   new Date(`${value}T00:00:00.000Z`).toISOString().slice(0, 10) === value;
 
+const isTime = (value: unknown): value is string =>
+  typeof value === 'string' && /^(0[1-9]|1[0-2]):[0-5]\d (AM|PM)$/.test(value);
+
+const getDateTimeMinutes = (date: string, time: string): number | null => {
+  if (!isDate(date) || !isTime(time)) return null;
+  const [year, month, day] = date.split('-').map(Number);
+  const match = /^(\d{2}):(\d{2}) (AM|PM)$/.exec(time);
+  if (!match) return null;
+  const hour = Number(match[1]) % 12 + (match[3] === 'PM' ? 12 : 0);
+  return Date.UTC(year, month - 1, day, hour, Number(match[2])) / 60000;
+};
+
+const toSortableDateTime = (date: string, time: string): string | null => {
+  const minutes = getDateTimeMinutes(date, time);
+  if (minutes === null) return null;
+  const [year, month, day] = date.split('-').map(Number);
+  const dateTime = new Date(minutes * 60000);
+  const hour = String(dateTime.getUTCHours()).padStart(2, '0');
+  const minute = String(dateTime.getUTCMinutes()).padStart(2, '0');
+  return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T${hour}:${minute}`;
+};
+
 const jsonObject = (value: unknown): Record<string, unknown> => {
   if (!isRecord(value)) throw new HttpError(400, 'A JSON object is required.');
   return value;
@@ -131,6 +154,10 @@ function parseCar(input: Record<string, unknown>, id: string, current?: Car): Ca
   if (!Number.isSafeInteger(pricePerDay) || pricePerDay < 1) {
     throw new HttpError(400, 'pricePerDay must be a positive whole number.');
   }
+  const pricePerHour = numberValue('pricePerHour', current?.pricePerHour ?? 0);
+  if (!Number.isSafeInteger(pricePerHour) || pricePerHour < 1) {
+    throw new HttpError(400, 'pricePerHour must be a positive whole number.');
+  }
   if (!allowedCategories.includes(category as (typeof allowedCategories)[number])) {
     throw new HttpError(400, 'category is not supported.');
   }
@@ -166,6 +193,7 @@ function parseCar(input: Record<string, unknown>, id: string, current?: Car): Ca
     year: numberValue('year', new Date().getFullYear()),
     category: category as Car['category'],
     pricePerDay,
+    pricePerHour,
     rating: numberValue('rating', 5),
     reviewCount: numberValue('reviewCount', 0),
     powerHp: numberValue('powerHp', 0),
@@ -237,6 +265,7 @@ export function createApp(options: ServerOptions = {}) {
       name TEXT NOT NULL,
       brand TEXT NOT NULL,
       price_per_day INTEGER NOT NULL,
+      price_per_hour INTEGER NOT NULL DEFAULT 0,
       is_available INTEGER NOT NULL DEFAULT 1,
       details_json TEXT NOT NULL,
       created_at TEXT NOT NULL,
@@ -249,6 +278,8 @@ export function createApp(options: ServerOptions = {}) {
       customer_email TEXT NOT NULL,
       pickup_date TEXT NOT NULL,
       return_date TEXT NOT NULL,
+      pickup_at TEXT NOT NULL DEFAULT '',
+      return_at TEXT NOT NULL DEFAULT '',
       total_amount INTEGER NOT NULL,
       status TEXT NOT NULL CHECK (status IN ('pending', 'confirmed', 'active', 'completed', 'cancelled')),
       payload_json TEXT NOT NULL,
@@ -273,24 +304,101 @@ export function createApp(options: ServerOptions = {}) {
       details_json TEXT NOT NULL,
       created_at TEXT NOT NULL
     );
-    CREATE INDEX IF NOT EXISTS bookings_car_dates ON bookings(car_id, pickup_date, return_date);
     CREATE INDEX IF NOT EXISTS activity_created ON activity_logs(created_at);
     CREATE INDEX IF NOT EXISTS locations_car_recorded ON car_locations(car_id, recorded_at);
   `);
 
+  const carColumns = database.prepare('PRAGMA table_info(cars)').all() as Array<{ name: string }>;
+  if (!carColumns.some((column) => column.name === 'price_per_hour')) {
+    database.exec('ALTER TABLE cars ADD COLUMN price_per_hour INTEGER NOT NULL DEFAULT 0');
+  }
+  const bookingColumns = database.prepare('PRAGMA table_info(bookings)').all() as Array<{ name: string }>;
+  if (!bookingColumns.some((column) => column.name === 'pickup_at')) {
+    database.exec("ALTER TABLE bookings ADD COLUMN pickup_at TEXT NOT NULL DEFAULT ''");
+  }
+  if (!bookingColumns.some((column) => column.name === 'return_at')) {
+    database.exec("ALTER TABLE bookings ADD COLUMN return_at TEXT NOT NULL DEFAULT ''");
+  }
+
+  const legacyBookings = database.prepare(`
+    SELECT id, pickup_date, return_date, payload_json
+    FROM bookings WHERE pickup_at = '' OR return_at = ''
+  `).all() as Array<{ id: string; pickup_date: string; return_date: string; payload_json: string }>;
+  const updateLegacyBooking = database.prepare('UPDATE bookings SET pickup_at = ?, return_at = ? WHERE id = ?');
+  for (const row of legacyBookings) {
+    const payload = JSON.parse(row.payload_json) as Record<string, unknown>;
+    const pickupAt = typeof payload.pickupTime === 'string'
+      ? toSortableDateTime(row.pickup_date, payload.pickupTime)
+      : null;
+    const returnAt = typeof payload.returnTime === 'string'
+      ? toSortableDateTime(row.return_date, payload.returnTime)
+      : null;
+    updateLegacyBooking.run(
+      pickupAt ?? `${row.pickup_date}T00:00`,
+      returnAt ?? `${row.return_date}T23:59`,
+      row.id
+    );
+  }
+  database.exec('CREATE INDEX IF NOT EXISTS bookings_car_times ON bookings(car_id, pickup_at, return_at)');
+
   const now = new Date().toISOString();
   const addSeedCar = database.prepare(`
-    INSERT OR IGNORE INTO cars (id, name, brand, price_per_day, is_available, details_json, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT OR IGNORE INTO cars
+      (id, name, brand, price_per_day, price_per_hour, is_available, details_json, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   for (const car of CARS_DATA) {
-    addSeedCar.run(car.id, car.name, car.brand, car.pricePerDay, Number(car.isAvailable), JSON.stringify(car), now, now);
+    addSeedCar.run(
+      car.id,
+      car.name,
+      car.brand,
+      car.pricePerDay,
+      car.pricePerHour,
+      Number(car.isAvailable),
+      JSON.stringify(car),
+      now,
+      now
+    );
+  }
+
+  const pricingVersion = (database.prepare('PRAGMA user_version').get() as { user_version: number }).user_version;
+  if (pricingVersion < 1) {
+    const readCar = database.prepare('SELECT details_json FROM cars WHERE id = ?');
+    const updateCarPricing = database.prepare(`
+      UPDATE cars
+      SET price_per_day = ?, price_per_hour = ?, details_json = ?, updated_at = ?
+      WHERE id = ?
+    `);
+    for (const seedCar of CARS_DATA) {
+      const row = readCar.get(seedCar.id) as { details_json: string } | undefined;
+      if (!row) continue;
+      const currentCar = JSON.parse(row.details_json) as Car;
+      const updatedCar = {
+        ...currentCar,
+        pricePerDay: seedCar.pricePerDay,
+        pricePerHour: seedCar.pricePerHour
+      };
+      updateCarPricing.run(
+        updatedCar.pricePerDay,
+        updatedCar.pricePerHour,
+        JSON.stringify(updatedCar),
+        now,
+        seedCar.id
+      );
+    }
+    const updateSeedBooking = database.prepare(`
+      UPDATE bookings SET total_amount = ?, payload_json = ? WHERE id = ?
+    `);
+    for (const booking of INITIAL_BOOKINGS) {
+      updateSeedBooking.run(booking.totalAmount, JSON.stringify(booking), booking.id);
+    }
+    database.exec('PRAGMA user_version = 1');
   }
 
   const addSeedBooking = database.prepare(`
     INSERT OR IGNORE INTO bookings
-      (id, car_id, customer_name, customer_email, pickup_date, return_date, total_amount, status, payload_json, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, car_id, customer_name, customer_email, pickup_date, return_date, pickup_at, return_at, total_amount, status, payload_json, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   for (const booking of INITIAL_BOOKINGS) {
     const status: BookingStatus =
@@ -304,6 +412,8 @@ export function createApp(options: ServerOptions = {}) {
       booking.driverInfo.email,
       booking.pickupDate,
       booking.returnDate,
+      toSortableDateTime(booking.pickupDate, booking.pickupTime) ?? `${booking.pickupDate}T00:00`,
+      toSortableDateTime(booking.returnDate, booking.returnTime) ?? `${booking.returnDate}T23:59`,
       booking.totalAmount,
       status,
       JSON.stringify(booking),
@@ -468,20 +578,20 @@ export function createApp(options: ServerOptions = {}) {
     const carId = requiredText('carId');
     const pickupDate = body.pickupDate;
     const returnDate = body.returnDate;
-    if (!isDate(pickupDate) || !isDate(returnDate) || returnDate <= pickupDate) {
-      throw new HttpError(400, 'A valid pickupDate and later returnDate are required.');
+    if (!isDate(pickupDate) || !isDate(returnDate)) {
+      throw new HttpError(400, 'Valid pickupDate and returnDate values are required.');
+    }
+    const durationUnit = body.durationUnit === undefined ? 'day' : body.durationUnit;
+    if (durationUnit !== 'day' && durationUnit !== 'hour') {
+      throw new HttpError(400, 'durationUnit must be day or hour.');
+    }
+    if (durationUnit === 'day' && returnDate <= pickupDate) {
+      throw new HttpError(400, 'A full-day booking requires a later returnDate.');
     }
     const carRow = database.prepare('SELECT * FROM cars WHERE id = ?').get(carId) as
-      | (DatabaseCarRow & { name: string; brand: string; price_per_day: number })
+      | (DatabaseCarRow & { name: string; brand: string; price_per_day: number; price_per_hour: number })
       | undefined;
     if (!carRow || !carRow.is_available) throw new HttpError(409, 'This vehicle is not currently available.');
-    const overlap = database.prepare(`
-      SELECT 1 FROM bookings
-      WHERE car_id = ? AND status IN ('pending', 'confirmed', 'active')
-        AND pickup_date < ? AND return_date > ?
-      LIMIT 1
-    `).get(carId, returnDate, pickupDate);
-    if (overlap) throw new HttpError(409, 'This vehicle already has a booking during those dates.');
 
     const driverInfo = jsonObject(body.driverInfo);
     for (const key of ['fullName', 'email', 'phone', 'licenseNumber']) {
@@ -493,9 +603,32 @@ export function createApp(options: ServerOptions = {}) {
     const returnLocation = requiredText('returnLocation');
     const pickupTime = requiredText('pickupTime');
     const returnTime = requiredText('returnTime');
-    const totalDays = Math.ceil(
-      (Date.parse(`${returnDate}T00:00:00.000Z`) - Date.parse(`${pickupDate}T00:00:00.000Z`)) / 86400000
-    );
+    const pickupAt = toSortableDateTime(pickupDate, pickupTime);
+    const returnAt = toSortableDateTime(returnDate, returnTime);
+    const pickupMinutes = getDateTimeMinutes(pickupDate, pickupTime);
+    const returnMinutes = getDateTimeMinutes(returnDate, returnTime);
+    if (pickupAt === null || returnAt === null || pickupMinutes === null || returnMinutes === null) {
+      throw new HttpError(400, 'pickupTime and returnTime must use a valid 12-hour time.');
+    }
+    if (returnMinutes <= pickupMinutes) {
+      throw new HttpError(400, 'Return date and time must be after the pick-up date and time.');
+    }
+    const overlap = database.prepare(`
+      SELECT 1 FROM bookings
+      WHERE car_id = ? AND status IN ('pending', 'confirmed', 'active')
+        AND pickup_at < ? AND return_at > ?
+      LIMIT 1
+    `).get(carId, returnAt, pickupAt);
+    if (overlap) throw new HttpError(409, 'This vehicle already has a booking during that time.');
+
+    const durationMinutes = returnMinutes - pickupMinutes;
+    const totalHours = Math.max(1, Math.ceil(durationMinutes / 60));
+    const totalDays = durationUnit === 'day'
+      ? Math.ceil(
+          (Date.parse(`${returnDate}T00:00:00.000Z`) - Date.parse(`${pickupDate}T00:00:00.000Z`)) / 86400000
+        )
+      : Math.max(1, Math.ceil(totalHours / 24));
+    const durationValue = durationUnit === 'hour' ? totalHours : totalDays;
     const car = JSON.parse(carRow.details_json) as Car;
     const suppliedServices = Array.isArray(body.extraServices) ? body.extraServices : [];
     const serviceIds = suppliedServices.map((service) => isRecord(service) ? service.id : service);
@@ -505,8 +638,15 @@ export function createApp(options: ServerOptions = {}) {
     const extraServices = INITIAL_EXTRA_SERVICES
       .filter((service) => serviceIds.includes(service.id))
       .map((service) => ({ ...service, selected: true }));
-    const basePrice = car.pricePerDay * totalDays;
-    const extrasTotal = extraServices.reduce((total, service) => total + service.pricePerDay * totalDays, 0);
+    const basePrice = durationUnit === 'hour'
+      ? car.pricePerHour * totalHours
+      : car.pricePerDay * totalDays;
+    const extrasTotal = extraServices.reduce(
+      (total, service) => total + (durationUnit === 'hour'
+        ? Math.round(service.pricePerDay * totalHours / 24)
+        : service.pricePerDay * totalDays),
+      0
+    );
     const taxAmount = Math.round((basePrice + extrasTotal) * 0.08);
     const subtotal = basePrice + extrasTotal + taxAmount;
     if (![basePrice, extrasTotal, taxAmount, subtotal].every(Number.isSafeInteger)) {
@@ -528,6 +668,8 @@ export function createApp(options: ServerOptions = {}) {
       returnTime,
       pickupLocation,
       returnLocation,
+      durationUnit,
+      durationValue,
       totalDays,
       basePrice,
       extraServices,
@@ -548,8 +690,8 @@ export function createApp(options: ServerOptions = {}) {
     };
     database.prepare(`
       INSERT INTO bookings
-        (id, car_id, customer_name, customer_email, pickup_date, return_date, total_amount, status, payload_json, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
+        (id, car_id, customer_name, customer_email, pickup_date, return_date, pickup_at, return_at, total_amount, status, payload_json, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
     `).run(
       booking.id,
       carId,
@@ -557,6 +699,8 @@ export function createApp(options: ServerOptions = {}) {
       booking.driverInfo.email,
       pickupDate,
       returnDate,
+      pickupAt,
+      returnAt,
       booking.totalAmount,
       JSON.stringify(booking),
       createdAt,
@@ -741,9 +885,20 @@ export function createApp(options: ServerOptions = {}) {
     const car = parseCar(body, id);
     const now = new Date().toISOString();
     database.prepare(`
-      INSERT INTO cars (id, name, brand, price_per_day, is_available, details_json, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(id, car.name, car.brand, car.pricePerDay, Number(car.isAvailable), JSON.stringify(car), now, now);
+      INSERT INTO cars
+        (id, name, brand, price_per_day, price_per_hour, is_available, details_json, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      car.name,
+      car.brand,
+      car.pricePerDay,
+      car.pricePerHour,
+      Number(car.isAvailable),
+      JSON.stringify(car),
+      now,
+      now
+    );
     recordActivity((request as AuthRequest).authUser!.id, 'car.created', 'car', id, { name: car.name });
     response.status(201).json(car);
   });
@@ -758,9 +913,19 @@ export function createApp(options: ServerOptions = {}) {
     const car = parseCar(body, row.id, current);
     const now = new Date().toISOString();
     database.prepare(`
-      UPDATE cars SET name = ?, brand = ?, price_per_day = ?, is_available = ?, details_json = ?, updated_at = ?
+      UPDATE cars
+      SET name = ?, brand = ?, price_per_day = ?, price_per_hour = ?, is_available = ?, details_json = ?, updated_at = ?
       WHERE id = ?
-    `).run(row.id, car.name, car.brand, car.pricePerDay, Number(car.isAvailable), JSON.stringify(car), now, row.id);
+    `).run(
+      car.name,
+      car.brand,
+      car.pricePerDay,
+      car.pricePerHour,
+      Number(car.isAvailable),
+      JSON.stringify(car),
+      now,
+      row.id
+    );
     recordActivity((request as AuthRequest).authUser!.id, 'car.updated', 'car', row.id, { name: car.name });
     response.json(car);
   });
@@ -818,7 +983,13 @@ export function createApp(options: ServerOptions = {}) {
     }
     const statusToSet = nextStatus;
     const row = database.prepare('SELECT * FROM bookings WHERE id = ?').get(request.params.id) as
-      | (DatabaseBookingRow & { car_id: string; pickup_date: string; return_date: string })
+      | (DatabaseBookingRow & {
+          car_id: string;
+          pickup_date: string;
+          return_date: string;
+          pickup_at: string;
+          return_at: string;
+        })
       | undefined;
     if (!row) throw new HttpError(404, 'Booking not found.');
     if (!transitions[row.status].includes(statusToSet)) {
@@ -831,11 +1002,11 @@ export function createApp(options: ServerOptions = {}) {
       const overlap = database.prepare(`
         SELECT 1 FROM bookings
         WHERE id != ? AND car_id = ? AND status IN ('pending', 'confirmed', 'active')
-          AND pickup_date < ? AND return_date > ?
+          AND pickup_at < ? AND return_at > ?
         LIMIT 1
-      `).get(row.id, row.car_id, row.return_date, row.pickup_date);
+      `).get(row.id, row.car_id, row.return_at, row.pickup_at);
       if (!car?.is_available || overlap) {
-        throw new HttpError(409, 'Vehicle availability cannot be confirmed for these dates.');
+        throw new HttpError(409, 'Vehicle availability cannot be confirmed for this time.');
       }
     }
     const updatedAt = new Date().toISOString();

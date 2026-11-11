@@ -204,7 +204,7 @@ export const ExploreScreen: React.FC<ExploreScreenProps> = ({
                   ...filters,
                   search: '',
                   category: 'All',
-                  maxPrice: 400000,
+                  maxPrice: 1000000,
                   transmission: 'all',
                   seats: 'all'
                 })

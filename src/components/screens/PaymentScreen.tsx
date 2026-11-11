@@ -16,6 +16,8 @@ interface PaymentScreenProps {
     returnTime: string;
     pickupLocation: string;
     returnLocation: string;
+    durationUnit: 'day' | 'hour';
+    durationValue: number;
     totalDays: number;
     basePrice: number;
     extraServices: ExtraService[];
@@ -99,6 +101,8 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
         returnTime: bookingDraft.returnTime,
         pickupLocation: bookingDraft.pickupLocation,
         returnLocation: bookingDraft.returnLocation,
+        durationUnit: bookingDraft.durationUnit,
+        durationValue: bookingDraft.durationValue,
         totalDays: bookingDraft.totalDays,
         basePrice: bookingDraft.basePrice,
         extraServices: bookingDraft.extraServices,
@@ -183,7 +187,9 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
                 {bookingDraft.car.name}
               </h4>
               <p className="text-[11px] text-[#B1B1B2]">
-                {bookingDraft.totalDays} Days · {bookingDraft.pickupDate}
+                {bookingDraft.durationValue} {bookingDraft.durationUnit === 'day'
+                  ? (bookingDraft.durationValue === 1 ? 'Day' : 'Days')
+                  : (bookingDraft.durationValue === 1 ? 'Hour' : 'Hours')} · {bookingDraft.pickupDate}
               </p>
             </div>
           </div>

@@ -8,6 +8,7 @@ export interface Car {
   year: number;
   category: CarCategory;
   pricePerDay: number;
+  pricePerHour: number;
   rating: number;
   reviewCount: number;
   powerHp: number;
@@ -59,6 +60,8 @@ export interface Booking {
   pickupLocation: string;
   returnLocation: string;
   totalDays: number;
+  durationUnit?: 'day' | 'hour';
+  durationValue?: number;
   basePrice: number;
   extraServices: ExtraService[];
   discount: number;

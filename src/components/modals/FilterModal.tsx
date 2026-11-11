@@ -95,7 +95,7 @@ export const FilterModal: React.FC<FilterModalProps> = ({
               <input
                 type="range"
                 min="150000"
-                max="400000"
+                max="1000000"
                 step="10000"
                 value={filters.maxPrice}
                 onChange={(e) =>
@@ -105,7 +105,7 @@ export const FilterModal: React.FC<FilterModalProps> = ({
               />
               <div className="flex justify-between text-[11px] text-[#B1B1B2] mt-1 font-mono">
                 <span>{formatNaira(150000)}/day</span>
-                <span>{formatNaira(400000)}/day</span>
+                <span>{formatNaira(1000000)}/day</span>
               </div>
             </div>
 

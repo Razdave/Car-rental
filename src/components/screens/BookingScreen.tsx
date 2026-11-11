@@ -9,6 +9,23 @@ import { Car, ExtraService, DriverInfo } from '../../types/car';
 import { INITIAL_EXTRA_SERVICES, USER_PROFILE } from '../../data/cars';
 import { formatNaira } from '../../utils/currency';
 
+const TIME_OPTIONS = Array.from({ length: 24 }, (_, hour) => {
+  const period = hour < 12 ? 'AM' : 'PM';
+  const hour12 = hour % 12 || 12;
+  return `${String(hour12).padStart(2, '0')}:00 ${period}`;
+});
+
+const getDateTimeMinutes = (date: string, time: string): number | null => {
+  const dateParts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  const timeParts = /^(\d{2}):(\d{2}) (AM|PM)$/.exec(time);
+  if (!dateParts || !timeParts) return null;
+
+  const [, year, month, day] = dateParts;
+  const [, hourText, minuteText, period] = timeParts;
+  const hour = Number(hourText) % 12 + (period === 'PM' ? 12 : 0);
+  return Date.UTC(Number(year), Number(month) - 1, Number(day), hour, Number(minuteText)) / 60000;
+};
+
 interface BookingScreenProps {
   car: Car;
   pickupLocation: string;
@@ -23,6 +40,8 @@ interface BookingScreenProps {
     returnTime: string;
     pickupLocation: string;
     returnLocation: string;
+    durationUnit: 'day' | 'hour';
+    durationValue: number;
     totalDays: number;
     basePrice: number;
     extraServices: ExtraService[];
@@ -44,6 +63,7 @@ export const BookingScreen: React.FC<BookingScreenProps> = ({
   const [returnDate, setReturnDate] = useState('2026-11-17');
   const [pickupTime, setPickupTime] = useState('10:00 AM');
   const [returnTime, setReturnTime] = useState('06:00 PM');
+  const [durationUnit, setDurationUnit] = useState<'day' | 'hour'>('day');
   const [extraServices, setExtraServices] = useState<ExtraService[]>(INITIAL_EXTRA_SERVICES);
 
   const [driverInfo, setDriverInfo] = useState<DriverInfo>({
@@ -56,16 +76,25 @@ export const BookingScreen: React.FC<BookingScreenProps> = ({
 
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Compute rental days
-  const start = new Date(pickupDate).getTime();
-  const end = new Date(returnDate).getTime();
-  const diffDays = Math.max(1, Math.round((end - start) / (1000 * 60 * 60 * 24)));
-  const totalDays = diffDays || 3;
-
-  const basePrice = car.pricePerDay * totalDays;
+  const start = new Date(`${pickupDate}T00:00:00.000Z`).getTime();
+  const end = new Date(`${returnDate}T00:00:00.000Z`).getTime();
+  const totalDays = Math.max(1, Math.ceil((end - start) / 86400000));
+  const pickupMinutes = getDateTimeMinutes(pickupDate, pickupTime);
+  const returnMinutes = getDateTimeMinutes(returnDate, returnTime);
+  const durationMinutes = pickupMinutes !== null && returnMinutes !== null
+    ? returnMinutes - pickupMinutes
+    : 0;
+  const hasValidTimeRange = durationMinutes > 0;
+  const totalHours = hasValidTimeRange ? Math.max(1, Math.ceil(durationMinutes / 60)) : 1;
+  const durationValue = durationUnit === 'hour' ? totalHours : totalDays;
+  const basePrice = durationUnit === 'hour'
+    ? car.pricePerHour * totalHours
+    : car.pricePerDay * totalDays;
   const selectedExtras = extraServices.filter((s) => s.selected);
   const extraServicesTotal = selectedExtras.reduce(
-    (acc, s) => acc + s.pricePerDay * totalDays,
+    (acc, s) => acc + (durationUnit === 'hour'
+      ? Math.round(s.pricePerDay * totalHours / 24)
+      : s.pricePerDay * totalDays),
     0
   );
   const taxAmount = Math.round((basePrice + extraServicesTotal) * 0.08);
@@ -100,6 +129,14 @@ export const BookingScreen: React.FC<BookingScreenProps> = ({
       setErrorMsg('Driver must confirm they are at least 25 years old.');
       return;
     }
+    if (durationUnit === 'hour' && !hasValidTimeRange) {
+      setErrorMsg('Return date and time must be after the pick-up date and time.');
+      return;
+    }
+    if (durationUnit === 'day' && returnDate <= pickupDate) {
+      setErrorMsg('Return date must be after the pick-up date.');
+      return;
+    }
 
     onProceedToPayment({
       car,
@@ -109,6 +146,8 @@ export const BookingScreen: React.FC<BookingScreenProps> = ({
       returnTime,
       pickupLocation,
       returnLocation,
+      durationUnit,
+      durationValue,
       totalDays,
       basePrice,
       extraServices: selectedExtras,
@@ -147,8 +186,10 @@ export const BookingScreen: React.FC<BookingScreenProps> = ({
             <span className="text-[10px] font-bold text-[#B1B1B2] uppercase">{car.brand}</span>
             <h3 className="text-sm font-bold text-[#080808] leading-tight">{car.name}</h3>
             <div className="flex items-baseline gap-1 mt-1">
-              <span className="text-sm font-extrabold text-[#080808]">{formatNaira(car.pricePerDay)}</span>
-              <span className="text-[11px] text-[#B1B1B2]">/day</span>
+              <span className="text-sm font-extrabold text-[#080808]">
+                {formatNaira(durationUnit === 'hour' ? car.pricePerHour : car.pricePerDay)}
+              </span>
+              <span className="text-[11px] text-[#B1B1B2]">/{durationUnit}</span>
             </div>
           </div>
         </div>
@@ -201,11 +242,35 @@ export const BookingScreen: React.FC<BookingScreenProps> = ({
             Rental Period
           </h3>
           <span className="px-2.5 py-0.5 rounded-full bg-red-50 text-[#D61B04] text-[11px] font-bold">
-            {totalDays} {totalDays === 1 ? 'Day' : 'Days'} Total
+            {durationValue} {durationUnit === 'day'
+              ? (durationValue === 1 ? 'Day' : 'Days')
+              : (durationValue === 1 ? 'Hour' : 'Hours')} Total
           </span>
         </div>
 
         <div className="bg-white rounded-3xl p-5 border border-slate-100 shadow-xs space-y-4">
+          <div className="grid grid-cols-2 gap-2" role="group" aria-label="Rental duration type">
+            {(['day', 'hour'] as const).map((unit) => (
+              <button
+                key={unit}
+                type="button"
+                onClick={() => setDurationUnit(unit)}
+                aria-pressed={durationUnit === unit}
+                className={`py-2.5 rounded-xl text-xs font-bold transition-colors ${
+                  durationUnit === unit
+                    ? 'bg-[#080808] text-white'
+                    : 'bg-[#F9F9F9] text-[#4D5056] border border-slate-200'
+                }`}
+              >
+                {unit === 'day' ? 'Full Day' : 'Hourly'}
+              </button>
+            ))}
+          </div>
+          {durationUnit === 'hour' && (
+            <p className="text-[11px] text-[#4D5056]">
+              Set the return date and time to choose the hourly duration. Minimum 1 hour; partial hours are rounded up, and add-ons are prorated from their daily rates.
+            </p>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-[10px] font-bold text-[#B1B1B2] uppercase block mb-1">
@@ -246,12 +311,7 @@ export const BookingScreen: React.FC<BookingScreenProps> = ({
                 onChange={(e) => setPickupTime(e.target.value)}
                 className="w-full p-2.5 rounded-xl bg-[#F9F9F9] border border-slate-200 text-xs font-bold text-[#080808] focus:ring-1 focus:ring-[#D61B04] focus:outline-none cursor-pointer"
               >
-                <option>09:00 AM</option>
-                <option>10:00 AM</option>
-                <option>11:00 AM</option>
-                <option>01:00 PM</option>
-                <option>03:00 PM</option>
-                <option>06:00 PM</option>
+                {TIME_OPTIONS.map((time) => <option key={time}>{time}</option>)}
               </select>
             </div>
 
@@ -264,11 +324,7 @@ export const BookingScreen: React.FC<BookingScreenProps> = ({
                 onChange={(e) => setReturnTime(e.target.value)}
                 className="w-full p-2.5 rounded-xl bg-[#F9F9F9] border border-slate-200 text-xs font-bold text-[#080808] focus:ring-1 focus:ring-[#D61B04] focus:outline-none cursor-pointer"
               >
-                <option>10:00 AM</option>
-                <option>01:00 PM</option>
-                <option>03:00 PM</option>
-                <option>06:00 PM</option>
-                <option>08:00 PM</option>
+                {TIME_OPTIONS.map((time) => <option key={time}>{time}</option>)}
               </select>
             </div>
           </div>
@@ -303,7 +359,10 @@ export const BookingScreen: React.FC<BookingScreenProps> = ({
 
               <div className="flex items-center gap-3">
                 <span className="text-xs font-extrabold text-[#080808] whitespace-nowrap">
-                  +{formatNaira(service.pricePerDay)}<span className="text-[10px] text-[#B1B1B2] font-normal">/day</span>
+                  +{formatNaira(durationUnit === 'hour'
+                    ? Math.round(service.pricePerDay / 24)
+                    : service.pricePerDay)}
+                  <span className="text-[10px] text-[#B1B1B2] font-normal">/{durationUnit}</span>
                 </span>
                 <div
                   className={`w-5 h-5 rounded-md border flex items-center justify-center transition-colors ${
@@ -415,7 +474,9 @@ export const BookingScreen: React.FC<BookingScreenProps> = ({
         <div className="bg-white rounded-3xl p-5 border border-slate-100 shadow-xs space-y-2.5 text-xs">
           <div className="flex justify-between text-[#4D5056]">
             <span>
-              Base Rental ({formatNaira(car.pricePerDay)} × {totalDays} {totalDays === 1 ? 'day' : 'days'})
+              Base Rental ({formatNaira(durationUnit === 'hour' ? car.pricePerHour : car.pricePerDay)} × {durationValue} {durationUnit === 'day'
+                ? (durationValue === 1 ? 'day' : 'days')
+                : (durationValue === 1 ? 'hour' : 'hours')})
             </span>
             <span className="font-bold text-[#080808]">{formatNaira(basePrice)}</span>
           </div>

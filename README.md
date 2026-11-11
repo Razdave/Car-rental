@@ -42,7 +42,20 @@ All management routes require a bearer token from `POST /api/auth/login`. Tokens
 | `GET /api/management/locations` | Signed in | Read the latest known location for each vehicle |
 | `POST /api/integrations/gps/locations` | GPS webhook secret | Ingest a vehicle location |
 
-Booking status transitions are `pending → confirmed → active → completed`; pending, confirmed, or active bookings can also be cancelled. Confirmation checks the vehicle's availability and overlapping reservations.
+Booking status transitions are `pending → confirmed → active → completed`; pending, confirmed, or active bookings can also be cancelled. Confirmation checks the vehicle's availability and overlapping reservations using the selected pickup/return times.
+
+Bookings can use a full-day rate or a fixed hourly rate. Hourly bookings use the existing pickup and return date/time fields, require at least one billable hour, and round partial hours up. Existing daily add-on rates are prorated over 24 hours for hourly bookings. The six seeded cars have a daily rate of ₦800,000:
+
+| Vehicle | Hourly rate |
+| --- | ---: |
+| Audi R8 V10 Performance | ₦150,000 |
+| Range Rover Autobiography | ₦180,000 |
+| Lucid Air Grand Touring | ₦180,000 |
+| BMW M4 Competition | ₦200,000 |
+| Porsche Taycan 4S Cross | ₦200,000 |
+| Mercedes-AMG G63 | ₦200,000 |
+
+New cars added through the management API must include both `pricePerDay` and `pricePerHour`.
 
 The app's payment UI is still a demo and does not charge a payment method. A completed checkout records a pending booking for staff review.
 This addition provides a REST API; it does not add a staff web dashboard.

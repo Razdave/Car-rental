@@ -31,6 +31,8 @@ export default function App() {
     returnTime: string;
     pickupLocation: string;
     returnLocation: string;
+    durationUnit: 'day' | 'hour';
+    durationValue: number;
     totalDays: number;
     basePrice: number;
     extraServices: ExtraService[];
@@ -81,7 +83,7 @@ export default function App() {
     search: '',
     category: 'All',
     minPrice: 150000,
-    maxPrice: 400000,
+    maxPrice: 1000000,
     transmission: 'all',
     seats: 'all',
     sortBy: 'recommended'
@@ -146,7 +148,7 @@ export default function App() {
       search: '',
       category: 'All',
       minPrice: 150000,
-      maxPrice: 400000,
+      maxPrice: 1000000,
       transmission: 'all',
       seats: 'all',
       sortBy: 'recommended'

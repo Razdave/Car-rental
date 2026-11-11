@@ -162,7 +162,9 @@ export const MyBookingsScreen: React.FC<MyBookingsScreenProps> = ({
                   <div className="flex items-center gap-1.5 text-xs font-bold text-[#D61B04] mt-0.5">
                     <span>{formatNaira(b.totalAmount)}</span>
                     <span className="text-[11px] text-[#B1B1B2] font-normal">
-                      · {b.totalDays} {b.totalDays === 1 ? 'day' : 'days'}
+                      · {b.durationValue ?? b.totalDays} {((b.durationUnit ?? 'day') === 'hour'
+                        ? (b.durationValue ?? b.totalDays) === 1 ? 'hour' : 'hours'
+                        : (b.durationValue ?? b.totalDays) === 1 ? 'day' : 'days')}
                     </span>
                   </div>
                 </div>
