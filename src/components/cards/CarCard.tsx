@@ -2,6 +2,7 @@ import React from 'react';
 import { motion } from 'motion/react';
 import { Heart, ArrowRight, Gauge, Zap, Users, Shield } from 'lucide-react';
 import { Car } from '../../types/car';
+import { formatNaira } from '../../utils/currency';
 
 interface CarCardProps {
   car: Car;
@@ -66,7 +67,7 @@ export const CarCard: React.FC<CarCardProps> = ({
 
           <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-100">
             <div className="flex items-baseline gap-1">
-              <span className="text-base font-bold text-[#080808]">${car.pricePerDay}</span>
+              <span className="text-sm font-bold text-[#080808]">{formatNaira(car.pricePerDay)}</span>
               <span className="text-[11px] text-[#B1B1B2]">/day</span>
             </div>
             <span className="text-xs font-bold text-[#D61B04] flex items-center gap-1 group-hover:translate-x-0.5 transition-transform">
@@ -152,7 +153,7 @@ export const CarCard: React.FC<CarCardProps> = ({
         <div>
           <span className="text-[11px] text-[#B1B1B2] block">Price</span>
           <div className="flex items-baseline gap-1">
-            <span className="text-xl font-extrabold text-[#080808]">${car.pricePerDay}</span>
+            <span className="text-base font-extrabold text-[#080808]">{formatNaira(car.pricePerDay)}</span>
             <span className="text-xs text-[#B1B1B2] font-normal">/day</span>
           </div>
         </div>

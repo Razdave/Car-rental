@@ -2,6 +2,7 @@ import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, RotateCcw, Check } from 'lucide-react';
 import { CarCategory, FilterOptions } from '../../types/car';
+import { formatNaira } from '../../utils/currency';
 
 interface FilterModalProps {
   isOpen: boolean;
@@ -87,15 +88,15 @@ export const FilterModal: React.FC<FilterModalProps> = ({
                 <label className="text-xs font-bold uppercase tracking-wider text-[#4D5056]">
                   Daily Rate (Max)
                 </label>
-                <span className="text-sm font-bold text-[#D61B04]">
-                  ${filters.maxPrice} <span className="text-xs font-normal text-[#B1B1B2]">/day</span>
+                <span className="text-xs font-bold text-[#D61B04]">
+                  {formatNaira(filters.maxPrice)} <span className="text-xs font-normal text-[#B1B1B2]">/day</span>
                 </span>
               </div>
               <input
                 type="range"
-                min="150"
-                max="400"
-                step="10"
+                min="150000"
+                max="400000"
+                step="10000"
                 value={filters.maxPrice}
                 onChange={(e) =>
                   onFilterChange({ ...filters, maxPrice: Number(e.target.value) })
@@ -103,8 +104,8 @@ export const FilterModal: React.FC<FilterModalProps> = ({
                 className="w-full accent-[#D61B04] cursor-pointer"
               />
               <div className="flex justify-between text-[11px] text-[#B1B1B2] mt-1 font-mono">
-                <span>$150/day</span>
-                <span>$400/day</span>
+                <span>{formatNaira(150000)}/day</span>
+                <span>{formatNaira(400000)}/day</span>
               </div>
             </div>
 

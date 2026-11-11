@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { CARS_DATA, INITIAL_BOOKINGS, AVAILABLE_LOCATIONS } from './data/cars';
 import { Car, Booking, FilterOptions, ExtraService, DriverInfo } from './types/car';
 import { MobileShell, TabId } from './components/layout/MobileShell';
@@ -41,9 +41,31 @@ export default function App() {
   const [confirmedBooking, setConfirmedBooking] = useState<Booking | null>(null);
 
   // Data State
-  const [cars] = useState<Car[]>(CARS_DATA);
+  const [cars, setCars] = useState<Car[]>(CARS_DATA);
+  const [fleetError, setFleetError] = useState<string | null>(null);
   const [favorites, setFavorites] = useState<string[]>(['car-audi-r8', 'car-range-rover']);
   const [bookings, setBookings] = useState<Booking[]>(INITIAL_BOOKINGS);
+
+  useEffect(() => {
+    let active = true;
+    fetch('/api/cars')
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`Fleet request failed (${response.status}).`);
+        const apiCars: Car[] = await response.json();
+        if (!Array.isArray(apiCars)) throw new Error('Fleet API returned an invalid response.');
+        if (active) {
+          setCars(apiCars);
+          setFleetError(null);
+        }
+      })
+      .catch((error: unknown) => {
+        console.error('Unable to load the managed vehicle fleet.', error);
+        if (active) setFleetError('Vehicle data is using the demo fleet because the backend is unavailable. Start the API with npm run server.');
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   // Location State
   const [pickupLocation, setPickupLocation] = useState<string>('Beverly Hills - Wilshire Blvd');
@@ -58,8 +80,8 @@ export default function App() {
   const [filters, setFilters] = useState<FilterOptions>({
     search: '',
     category: 'All',
-    minPrice: 150,
-    maxPrice: 400,
+    minPrice: 150000,
+    maxPrice: 400000,
     transmission: 'all',
     seats: 'all',
     sortBy: 'recommended'
@@ -123,8 +145,8 @@ export default function App() {
     setFilters({
       search: '',
       category: 'All',
-      minPrice: 150,
-      maxPrice: 400,
+      minPrice: 150000,
+      maxPrice: 400000,
       transmission: 'all',
       seats: 'all',
       sortBy: 'recommended'
@@ -288,6 +310,11 @@ export default function App() {
       activeBookingsCount={activeBookingsCount}
       hideBottomNav={isDeepScreen}
     >
+      {fleetError && (
+        <p role="alert" className="mx-5 mt-3 rounded-xl bg-amber-50 p-3 text-xs font-semibold text-amber-800">
+          {fleetError}
+        </p>
+      )}
       {renderContent()}
 
       {/* Global Modals */}

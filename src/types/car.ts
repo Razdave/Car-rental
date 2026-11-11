@@ -65,6 +65,7 @@ export interface Booking {
   taxAmount: number;
   totalAmount: number;
   status: 'active' | 'upcoming' | 'completed' | 'cancelled';
+  managementStatus?: 'pending' | 'confirmed' | 'active' | 'completed' | 'cancelled';
   driverInfo: DriverInfo;
   paymentMethod: string;
   createdAt: string;

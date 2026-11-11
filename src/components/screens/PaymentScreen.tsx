@@ -5,6 +5,7 @@ import {
   Lock, CheckCircle2, Tag, Loader2, Sparkles 
 } from 'lucide-react';
 import { Car, ExtraService, DriverInfo, Booking } from '../../types/car';
+import { formatNaira } from '../../utils/currency';
 
 interface PaymentScreenProps {
   bookingDraft: {
@@ -26,6 +27,21 @@ interface PaymentScreenProps {
   onPaymentSuccess: (newBooking: Booking) => void;
 }
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
+
+const isBooking = (value: unknown): value is Booking =>
+  isRecord(value) &&
+  typeof value.id === 'string' &&
+  typeof value.carId === 'string' &&
+  isRecord(value.car) &&
+  typeof value.pickupDate === 'string' &&
+  typeof value.returnDate === 'string' &&
+  typeof value.totalAmount === 'number' &&
+  Array.isArray(value.extraServices) &&
+  isRecord(value.driverInfo) &&
+  typeof value.managementStatus === 'string';
+
 export const PaymentScreen: React.FC<PaymentScreenProps> = ({
   bookingDraft,
   onBack,
@@ -42,6 +58,7 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
   const [discountAmount, setDiscountAmount] = useState(0);
   const [promoApplied, setPromoApplied] = useState(false);
   const [promoError, setPromoError] = useState<string | null>(null);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
 
   // Payment processing state
   const [isProcessing, setIsProcessing] = useState(false);
@@ -56,7 +73,7 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
       setPromoApplied(true);
       setPromoError(null);
     } else if (code === 'VIP10') {
-      setDiscountAmount(50);
+      setDiscountAmount(50000);
       setPromoApplied(true);
       setPromoError(null);
     } else {
@@ -64,12 +81,11 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
     }
   };
 
-  const handleConfirmPayment = () => {
+  const handleConfirmPayment = async () => {
     setIsProcessing(true);
-
-    setTimeout(() => {
-      setIsProcessing(false);
-
+    setPaymentError(null);
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 1500));
       const referenceId = `BK-${Math.floor(10000 + Math.random() * 90000)}`;
       const digitalPassCode = `PASS-${bookingDraft.car.brand.slice(0, 3).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
 
@@ -103,8 +119,32 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
         digitalPassCode
       };
 
-      onPaymentSuccess(newBooking);
-    }, 1500);
+      const response = await fetch('/api/bookings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...newBooking,
+          promoCode: promoApplied ? promoCode.trim().toUpperCase() : ''
+        })
+      });
+      const responseBody: unknown = response.headers.get('content-type')?.includes('application/json')
+        ? await response.json()
+        : null;
+      if (!response.ok) {
+        const message = isRecord(responseBody) && typeof responseBody.error === 'string'
+          ? responseBody.error
+          : 'Unable to save this booking. Check the backend connection and try again.';
+        throw new Error(message);
+      }
+      if (!isBooking(responseBody)) throw new Error('The booking service returned an invalid response.');
+      const savedBooking: Booking = responseBody;
+      onPaymentSuccess(savedBooking);
+    } catch (error) {
+      console.error('Unable to save the booking.', error);
+      setPaymentError(error instanceof Error ? error.message : 'Unable to save this booking.');
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   return (
@@ -147,7 +187,7 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
               </p>
             </div>
           </div>
-          <span className="text-sm font-black text-[#080808]">${finalTotal}</span>
+          <span className="text-sm font-black text-[#080808]">{formatNaira(finalTotal)}</span>
         </div>
       </div>
 
@@ -321,7 +361,7 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
           {promoApplied && (
             <div className="mt-2 text-xs font-semibold text-emerald-600 flex items-center gap-1.5">
               <CheckCircle2 className="w-3.5 h-3.5" />
-              <span>Promo applied! Saved ${discountAmount} on this rental.</span>
+              <span>Promo applied! Saved {formatNaira(discountAmount)} on this rental.</span>
             </div>
           )}
 
@@ -333,11 +373,17 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
         </div>
       </div>
 
+      {paymentError && (
+        <p role="alert" className="mx-5 mb-4 rounded-xl bg-red-50 p-3 text-xs font-semibold text-[#D61B04]">
+          {paymentError}
+        </p>
+      )}
+
       {/* Security Guarantee Badge */}
       <div className="px-5 mb-6">
         <div className="p-3.5 rounded-2xl bg-[#F4F4F6] flex items-center justify-center gap-2 text-xs font-semibold text-[#4D5056]">
           <Lock className="w-3.5 h-3.5 text-emerald-600" />
-          <span>256-Bit Bank Level Encryption · PCI DSS Compliant</span>
+          <span>Demo checkout only · No real payment is processed</span>
         </div>
       </div>
 
@@ -347,10 +393,10 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
           <div>
             <span className="text-[10px] text-[#B1B1B2] block uppercase font-bold">Total to Pay</span>
             <div className="flex items-baseline gap-1.5">
-              <span className="text-2xl font-black text-[#080808]">${finalTotal}</span>
+              <span className="text-xl font-black text-[#080808]">{formatNaira(finalTotal)}</span>
               {discountAmount > 0 && (
                 <span className="text-xs text-[#B1B1B2] line-through font-semibold">
-                  ${bookingDraft.totalAmount}
+                  {formatNaira(bookingDraft.totalAmount)}
                 </span>
               )}
             </div>
@@ -369,7 +415,7 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
             ) : (
               <>
                 <Lock className="w-4 h-4" />
-                <span>Confirm & Pay ${finalTotal}</span>
+                <span>Confirm & Pay {formatNaira(finalTotal)}</span>
               </>
             )}
           </button>

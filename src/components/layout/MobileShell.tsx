@@ -41,7 +41,7 @@ export const MobileShell: React.FC<MobileShellProps> = ({
         <div className="flex items-center gap-3">
           <div className="w-2.5 h-2.5 rounded-full bg-[#D61B04]" />
           <span className="font-extrabold text-white tracking-wider uppercase text-[11px]">
-            ApexDrive · Mobile UI/UX Experience
+            Aurevon Services · Mobile UI/UX Experience
           </span>
           <span className="text-white/30">|</span>
           <span className="text-white/60">MD Sabbir Hosen Dribbble Recreation</span>

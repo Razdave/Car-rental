@@ -6,6 +6,7 @@ import {
   Settings, Award, Check, Globe 
 } from 'lucide-react';
 import { USER_PROFILE } from '../../data/cars';
+import { formatNaira } from '../../utils/currency';
 
 interface ProfileScreenProps {
   onLogout: () => void;
@@ -25,7 +26,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   const [editPhone, setEditPhone] = useState(profile.phone);
 
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
-  const [currency, setCurrency] = useState('USD ($)');
+  const [currency, setCurrency] = useState('NGN (₦)');
   const [showSupportModal, setShowSupportModal] = useState(false);
   const [showLicenseModal, setShowLicenseModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -99,7 +100,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
 
           <div className="bg-white p-3.5 rounded-2xl border border-slate-100 text-center shadow-xs">
             <span className="text-[10px] font-bold text-[#B1B1B2] block uppercase">VIP Savings</span>
-            <span className="text-base font-extrabold text-emerald-600 mt-0.5 block">${profile.totalSaved}</span>
+            <span className="text-sm font-extrabold text-emerald-600 mt-0.5 block">{formatNaira(profile.totalSaved)}</span>
           </div>
         </div>
       </div>
@@ -185,9 +186,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
               onChange={(e) => setCurrency(e.target.value)}
               className="text-xs font-bold text-[#080808] bg-[#F9F9F9] py-1.5 px-3 rounded-xl border border-slate-200 cursor-pointer"
             >
-              <option value="USD ($)">USD ($)</option>
-              <option value="EUR (€)">EUR (€)</option>
-              <option value="GBP (£)">GBP (£)</option>
+              <option value="NGN (₦)">NGN (₦)</option>
             </select>
           </div>
         </div>
@@ -223,7 +222,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
               <div className="w-9 h-9 rounded-xl bg-red-50 text-[#D61B04] flex items-center justify-center">
                 <LogOut className="w-4 h-4" />
               </div>
-              <span className="text-xs font-bold">Log Out of ApexDrive</span>
+              <span className="text-xs font-bold">Log Out of Aurevon Services</span>
             </div>
             <ChevronRight className="w-4 h-4 text-red-300" />
           </button>

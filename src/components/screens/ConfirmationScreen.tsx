@@ -1,10 +1,21 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import { 
   CheckCircle2, QrCode, Calendar, MapPin, 
   Download, ArrowRight, ShieldCheck, Sparkles, Check 
 } from 'lucide-react';
 import { Booking } from '../../types/car';
+import { formatNaira } from '../../utils/currency';
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
+
+const isManagementStatus = (value: unknown): value is NonNullable<Booking['managementStatus']> =>
+  value === 'pending' ||
+  value === 'confirmed' ||
+  value === 'active' ||
+  value === 'completed' ||
+  value === 'cancelled';
 
 interface ConfirmationScreenProps {
   booking: Booking;
@@ -18,6 +29,47 @@ export const ConfirmationScreen: React.FC<ConfirmationScreenProps> = ({
   onGoHome
 }) => {
   const [downloaded, setDownloaded] = useState(false);
+  const [managementStatus, setManagementStatus] = useState(booking.managementStatus);
+  const [statusError, setStatusError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!booking.managementStatus) return;
+    let active = true;
+    const refreshStatus = async () => {
+      try {
+        const response = await fetch(`/api/bookings/${encodeURIComponent(booking.id)}/status`, {
+          headers: { 'X-Booking-Email': booking.driverInfo.email }
+        });
+        const result: unknown = await response.json();
+        if (!response.ok) {
+          const message = isRecord(result) && typeof result.error === 'string'
+            ? result.error
+            : 'Could not refresh the booking status.';
+          throw new Error(message);
+        }
+        if (
+          !isRecord(result) ||
+          !isManagementStatus(result.managementStatus)
+        ) {
+          throw new Error('Booking status response is invalid.');
+        }
+        if (active) {
+          setManagementStatus(result.managementStatus);
+          setStatusError(null);
+        }
+      } catch (error) {
+        console.error('Unable to refresh booking status.', error);
+        if (active) setStatusError('Booking status could not be refreshed. Please check again later.');
+      }
+    };
+
+    void refreshStatus();
+    const intervalId = window.setInterval(refreshStatus, 15000);
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+    };
+  }, [booking.driverInfo.email, booking.id, booking.managementStatus]);
 
   const handleDownloadPass = () => {
     setDownloaded(true);
@@ -38,11 +90,24 @@ export const ConfirmationScreen: React.FC<ConfirmationScreenProps> = ({
         </motion.div>
 
         <h1 className="text-2xl font-black text-[#080808] tracking-tight">
-          Booking Confirmed!
+          {managementStatus === 'pending'
+            ? 'Booking Received'
+            : managementStatus === 'cancelled'
+            ? 'Booking Cancelled'
+            : managementStatus === 'active'
+            ? 'Rental In Progress'
+            : managementStatus === 'completed'
+            ? 'Rental Completed'
+            : 'Booking Confirmed!'}
         </h1>
         <p className="text-xs text-[#4D5056] mt-1">
-          Your reservation has been secured. Your digital car key is generated.
+          {managementStatus === 'pending'
+            ? 'Your reservation is awaiting staff confirmation.'
+            : managementStatus === 'cancelled'
+            ? 'This reservation was cancelled by the rental team.'
+            : 'Your reservation has been confirmed.'}
         </p>
+        {statusError && <p role="status" className="text-[11px] text-amber-700 mt-2">{statusError}</p>}
         <div className="inline-block mt-2 px-3 py-1 rounded-full bg-slate-200/60 font-mono text-xs font-bold text-[#080808]">
           Reference: {booking.id}
         </div>
@@ -59,10 +124,16 @@ export const ConfirmationScreen: React.FC<ConfirmationScreenProps> = ({
         <div className="p-5 bg-gradient-to-r from-[#080808] to-[#1F2024] text-white">
           <div className="flex items-center justify-between mb-3">
             <span className="text-[10px] font-extrabold uppercase tracking-widest text-[#D61B04]">
-              {booking.car.brand} VIP RENTAL PASS
+              {booking.car.brand} {managementStatus === 'pending' ? 'BOOKING REQUEST' : 'VIP RENTAL PASS'}
             </span>
-            <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-bold border border-emerald-500/30">
-              CONFIRMED
+            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+              managementStatus === 'pending'
+                ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                : managementStatus === 'cancelled'
+                ? 'bg-red-500/20 text-red-300 border-red-500/30'
+                : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+            }`}>
+              {managementStatus === 'pending' ? 'PENDING REVIEW' : (managementStatus ?? 'confirmed').toUpperCase()}
             </span>
           </div>
 
@@ -107,42 +178,52 @@ export const ConfirmationScreen: React.FC<ConfirmationScreenProps> = ({
               <span className="font-bold text-[#080808] block">{booking.driverInfo.fullName}</span>
             </div>
             <div>
-              <span className="text-[10px] uppercase font-bold text-[#B1B1B2] block">Total Paid</span>
-              <span className="font-extrabold text-sm text-[#D61B04] block">${booking.totalAmount}</span>
+              <span className="text-[10px] uppercase font-bold text-[#B1B1B2] block">Booking Total</span>
+              <span className="font-extrabold text-sm text-[#D61B04] block">{formatNaira(booking.totalAmount)}</span>
             </div>
           </div>
 
           {/* QR Code section */}
-          <div className="pt-4 border-t border-dashed border-slate-200 text-center flex flex-col items-center">
-            <div className="p-3 bg-white border border-slate-200 rounded-2xl shadow-xs mb-2">
-              <QrCode className="w-24 h-24 text-[#080808]" />
-            </div>
-            <span className="font-mono text-xs font-bold text-[#080808]">{booking.digitalPassCode}</span>
-            <p className="text-[10px] text-[#B1B1B2] mt-0.5">
-              Scan at vehicle door scanner or show to concierge for contactless access
+          {managementStatus === 'pending' || managementStatus === 'cancelled' ? (
+            <p className="pt-4 border-t border-dashed border-slate-200 text-center text-[10px] text-[#B1B1B2]">
+              {managementStatus === 'pending'
+                ? 'A digital pass will be available after staff confirms your reservation.'
+                : 'A digital pass is unavailable for a cancelled reservation.'}
             </p>
-          </div>
+          ) : (
+            <div className="pt-4 border-t border-dashed border-slate-200 text-center flex flex-col items-center">
+              <div className="p-3 bg-white border border-slate-200 rounded-2xl shadow-xs mb-2">
+                <QrCode className="w-24 h-24 text-[#080808]" />
+              </div>
+              <span className="font-mono text-xs font-bold text-[#080808]">{booking.digitalPassCode}</span>
+              <p className="text-[10px] text-[#B1B1B2] mt-0.5">
+                Scan at vehicle door scanner or show to concierge for contactless access
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Download Ticket Button */}
-        <div className="p-4 bg-[#F9F9F9] border-t border-slate-100">
-          <button
-            onClick={handleDownloadPass}
-            className="w-full py-3 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-xs font-bold text-[#080808] flex items-center justify-center gap-2 transition-colors shadow-xs"
-          >
-            {downloaded ? (
-              <>
-                <Check className="w-4 h-4 text-emerald-600" />
-                <span className="text-emerald-700">Digital Pass Saved to Apple Wallet</span>
-              </>
-            ) : (
-              <>
-                <Download className="w-4 h-4 text-[#D61B04]" />
-                <span>Save Pass / Add to Wallet</span>
-              </>
-            )}
-          </button>
-        </div>
+        {managementStatus !== 'pending' && managementStatus !== 'cancelled' && (
+          <div className="p-4 bg-[#F9F9F9] border-t border-slate-100">
+            <button
+              onClick={handleDownloadPass}
+              className="w-full py-3 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-xs font-bold text-[#080808] flex items-center justify-center gap-2 transition-colors shadow-xs"
+            >
+              {downloaded ? (
+                <>
+                  <Check className="w-4 h-4 text-emerald-600" />
+                  <span className="text-emerald-700">Digital Pass Saved to Apple Wallet</span>
+                </>
+              ) : (
+                <>
+                  <Download className="w-4 h-4 text-[#D61B04]" />
+                  <span>Save Pass / Add to Wallet</span>
+                </>
+              )}
+            </button>
+          </div>
+        )}
       </motion.div>
 
       {/* Navigation CTAs */}

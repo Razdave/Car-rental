@@ -6,6 +6,7 @@ import {
   Info, Clock, Award, CheckCircle2 
 } from 'lucide-react';
 import { Car } from '../../types/car';
+import { formatNaira } from '../../utils/currency';
 
 interface CarDetailsScreenProps {
   car: Car;
@@ -33,8 +34,8 @@ export const CarDetailsScreen: React.FC<CarDetailsScreenProps> = ({
   const handleShare = () => {
     if (navigator.share) {
       navigator.share({
-        title: `${car.name} - ApexDrive Rental`,
-        text: `Check out this ${car.name} available for rent on ApexDrive!`,
+        title: `${car.name} - Aurevon Services Rental`,
+        text: `Check out this ${car.name} available for rent from Aurevon Services!`,
         url: window.location.href
       }).catch(() => {});
     } else {
@@ -277,7 +278,7 @@ export const CarDetailsScreen: React.FC<CarDetailsScreenProps> = ({
               Daily Price
             </span>
             <div className="flex items-baseline gap-1">
-              <span className="text-2xl font-black text-[#080808]">${car.pricePerDay}</span>
+              <span className="text-xl font-black text-[#080808]">{formatNaira(car.pricePerDay)}</span>
               <span className="text-xs text-[#B1B1B2]">/day</span>
             </div>
           </div>

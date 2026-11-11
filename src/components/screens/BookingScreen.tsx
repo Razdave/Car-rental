@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { Car, ExtraService, DriverInfo } from '../../types/car';
 import { INITIAL_EXTRA_SERVICES, USER_PROFILE } from '../../data/cars';
+import { formatNaira } from '../../utils/currency';
 
 interface BookingScreenProps {
   car: Car;
@@ -146,7 +147,7 @@ export const BookingScreen: React.FC<BookingScreenProps> = ({
             <span className="text-[10px] font-bold text-[#B1B1B2] uppercase">{car.brand}</span>
             <h3 className="text-sm font-bold text-[#080808] leading-tight">{car.name}</h3>
             <div className="flex items-baseline gap-1 mt-1">
-              <span className="text-base font-extrabold text-[#080808]">${car.pricePerDay}</span>
+              <span className="text-sm font-extrabold text-[#080808]">{formatNaira(car.pricePerDay)}</span>
               <span className="text-[11px] text-[#B1B1B2]">/day</span>
             </div>
           </div>
@@ -302,7 +303,7 @@ export const BookingScreen: React.FC<BookingScreenProps> = ({
 
               <div className="flex items-center gap-3">
                 <span className="text-xs font-extrabold text-[#080808] whitespace-nowrap">
-                  +${service.pricePerDay}<span className="text-[10px] text-[#B1B1B2] font-normal">/day</span>
+                  +{formatNaira(service.pricePerDay)}<span className="text-[10px] text-[#B1B1B2] font-normal">/day</span>
                 </span>
                 <div
                   className={`w-5 h-5 rounded-md border flex items-center justify-center transition-colors ${
@@ -414,21 +415,21 @@ export const BookingScreen: React.FC<BookingScreenProps> = ({
         <div className="bg-white rounded-3xl p-5 border border-slate-100 shadow-xs space-y-2.5 text-xs">
           <div className="flex justify-between text-[#4D5056]">
             <span>
-              Base Rental (${car.pricePerDay} × {totalDays} {totalDays === 1 ? 'day' : 'days'})
+              Base Rental ({formatNaira(car.pricePerDay)} × {totalDays} {totalDays === 1 ? 'day' : 'days'})
             </span>
-            <span className="font-bold text-[#080808]">${basePrice}</span>
+            <span className="font-bold text-[#080808]">{formatNaira(basePrice)}</span>
           </div>
 
           {extraServicesTotal > 0 && (
             <div className="flex justify-between text-[#4D5056]">
               <span>Selected Protection & Add-ons</span>
-              <span className="font-bold text-[#080808]">+${extraServicesTotal}</span>
+              <span className="font-bold text-[#080808]">+{formatNaira(extraServicesTotal)}</span>
             </div>
           )}
 
           <div className="flex justify-between text-[#4D5056]">
             <span>Taxes & Concession Recovery (8%)</span>
-            <span className="font-bold text-[#080808]">+${taxAmount}</span>
+            <span className="font-bold text-[#080808]">+{formatNaira(taxAmount)}</span>
           </div>
 
           <div className="pt-3 border-t border-slate-100 flex justify-between items-baseline">
@@ -436,7 +437,7 @@ export const BookingScreen: React.FC<BookingScreenProps> = ({
               <span className="text-sm font-black text-[#080808] block">Total Amount</span>
               <span className="text-[10px] text-emerald-600 font-semibold">Free cancellation up to 24h</span>
             </div>
-            <span className="text-xl font-black text-[#D61B04]">${totalAmount}</span>
+            <span className="text-lg font-black text-[#D61B04]">{formatNaira(totalAmount)}</span>
           </div>
         </div>
       </div>
@@ -455,7 +456,7 @@ export const BookingScreen: React.FC<BookingScreenProps> = ({
         <div className="max-w-md mx-auto flex items-center justify-between gap-4">
           <div>
             <span className="text-[10px] text-[#B1B1B2] block uppercase font-bold">Total Estimated</span>
-            <span className="text-2xl font-black text-[#080808]">${totalAmount}</span>
+            <span className="text-xl font-black text-[#080808]">{formatNaira(totalAmount)}</span>
           </div>
 
           <button

@@ -6,6 +6,7 @@ import {
   ArrowRight, ShieldCheck, Car as CarIcon, Sparkles 
 } from 'lucide-react';
 import { Booking, Car } from '../../types/car';
+import { formatNaira } from '../../utils/currency';
 import { DigitalKeyModal } from '../modals/DigitalKeyModal';
 
 interface MyBookingsScreenProps {
@@ -159,7 +160,7 @@ export const MyBookingsScreen: React.FC<MyBookingsScreenProps> = ({
                   </span>
                   <h4 className="text-sm font-bold text-[#080808] truncate">{b.car.name}</h4>
                   <div className="flex items-center gap-1.5 text-xs font-bold text-[#D61B04] mt-0.5">
-                    <span>${b.totalAmount}</span>
+                    <span>{formatNaira(b.totalAmount)}</span>
                     <span className="text-[11px] text-[#B1B1B2] font-normal">
                       · {b.totalDays} {b.totalDays === 1 ? 'day' : 'days'}
                     </span>
@@ -261,7 +262,7 @@ export const MyBookingsScreen: React.FC<MyBookingsScreenProps> = ({
             </div>
             <h3 className="text-base font-bold text-[#080808]">Cancel Reservation?</h3>
             <p className="text-xs text-[#4D5056] mt-1 mb-4 leading-relaxed">
-              Are you sure you want to cancel your booking for <span className="font-bold text-[#080808]">{bookingToCancel.car.name}</span>? You will receive a 100% full refund of ${bookingToCancel.totalAmount} to your original payment method.
+              Are you sure you want to cancel your booking for <span className="font-bold text-[#080808]">{bookingToCancel.car.name}</span>? You will receive a 100% full refund of {formatNaira(bookingToCancel.totalAmount)} to your original payment method.
             </p>
 
             <div className="flex gap-2">
@@ -310,7 +311,7 @@ export const MyBookingsScreen: React.FC<MyBookingsScreenProps> = ({
                 </button>
               </div>
               <span className="text-xs text-[#4D5056] font-semibold">
-                Additional cost: <span className="text-[#D61B04] font-bold">+${bookingToExtend.car.pricePerDay * extendDays}</span>
+                Additional cost: <span className="text-[#D61B04] font-bold">+{formatNaira(bookingToExtend.car.pricePerDay * extendDays)}</span>
               </span>
             </div>
 
