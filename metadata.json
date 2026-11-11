@@ -1,0 +1,6 @@
+{
+  "name": "ApexDrive - Premium Car Rental",
+  "description": "Pixel-perfect luxury car rental mobile application recreating MD Sabbir Hosen's Dribbble design with instant booking, vehicle specifications, real-time filters, and profile management.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

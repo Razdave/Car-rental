@@ -1,0 +1,41 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  --color-brand-bg: #F9F9F9;
+  --color-brand-black: #080808;
+  --color-brand-red: #D61B04;
+  --color-brand-grey: #B1B1B2;
+  --color-brand-darkgrey: #4D5056;
+  --color-brand-green: #617D76;
+  --color-brand-warm: #CA6247;
+}
+
+:root {
+  --app-bg: #F9F9F9;
+  --app-black: #080808;
+  --app-red: #D61B04;
+  --app-grey: #B1B1B2;
+  --app-darkgrey: #4D5056;
+  --app-green: #617D76;
+  --app-warm: #CA6247;
+}
+
+/* Custom scrollbar styling for horizontal car lists */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+body {
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  background-color: #0E0F12;
+}
+
+/* Prevent unwanted callout on mobile taps */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
