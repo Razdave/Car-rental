@@ -195,6 +195,42 @@ export const BookingScreen: React.FC<BookingScreenProps> = ({
         </div>
       </div>
 
+      {/* Rental Duration Type */}
+      <div className="px-5 mb-5">
+        <h3 className="text-xs font-bold uppercase tracking-wider text-[#4D5056] mb-3">
+          Select Rental Duration
+        </h3>
+        <div className="grid grid-cols-2 gap-3" role="group" aria-label="Rental duration type">
+          {(['day', 'hour'] as const).map((unit) => (
+            <button
+              key={unit}
+              type="button"
+              onClick={() => setDurationUnit(unit)}
+              aria-pressed={durationUnit === unit}
+              className={`p-4 rounded-2xl border text-left transition-colors ${
+                durationUnit === unit
+                  ? 'bg-[#080808] text-white border-[#080808]'
+                  : 'bg-white text-[#080808] border-slate-200'
+              }`}
+            >
+              <span className="block text-xs font-extrabold">
+                {unit === 'day' ? 'Daily (Full Day)' : 'Hourly'}
+              </span>
+              <span className={`block text-[11px] mt-1 ${
+                durationUnit === unit ? 'text-white/70' : 'text-[#B1B1B2]'
+              }`}>
+                {formatNaira(unit === 'day' ? car.pricePerDay : car.pricePerHour)}/{unit}
+              </span>
+            </button>
+          ))}
+        </div>
+        {durationUnit === 'hour' && (
+          <p className="text-[11px] text-[#4D5056] mt-2">
+            Set the return date and time below. Minimum 1 hour; partial hours are rounded up.
+          </p>
+        )}
+      </div>
+
       {/* Locations Section */}
       <div className="px-5 mb-5">
         <h3 className="text-xs font-bold uppercase tracking-wider text-[#4D5056] mb-3">
@@ -249,28 +285,6 @@ export const BookingScreen: React.FC<BookingScreenProps> = ({
         </div>
 
         <div className="bg-white rounded-3xl p-5 border border-slate-100 shadow-xs space-y-4">
-          <div className="grid grid-cols-2 gap-2" role="group" aria-label="Rental duration type">
-            {(['day', 'hour'] as const).map((unit) => (
-              <button
-                key={unit}
-                type="button"
-                onClick={() => setDurationUnit(unit)}
-                aria-pressed={durationUnit === unit}
-                className={`py-2.5 rounded-xl text-xs font-bold transition-colors ${
-                  durationUnit === unit
-                    ? 'bg-[#080808] text-white'
-                    : 'bg-[#F9F9F9] text-[#4D5056] border border-slate-200'
-                }`}
-              >
-                {unit === 'day' ? 'Full Day' : 'Hourly'}
-              </button>
-            ))}
-          </div>
-          {durationUnit === 'hour' && (
-            <p className="text-[11px] text-[#4D5056]">
-              Set the return date and time to choose the hourly duration. Minimum 1 hour; partial hours are rounded up, and add-ons are prorated from their daily rates.
-            </p>
-          )}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-[10px] font-bold text-[#B1B1B2] uppercase block mb-1">
