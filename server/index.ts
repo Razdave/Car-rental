@@ -169,7 +169,7 @@ function parseCar(input: Record<string, unknown>, id: string, current?: Car): Ca
   }
   if (
     !imageUrl.startsWith('/uploads/cars/') &&
-    !imageUrl.startsWith('/src/assets/images/') &&
+    !imageUrl.startsWith('/images/') &&
     !/^https?:\/\//i.test(imageUrl)
   ) {
     throw new HttpError(400, 'imageUrl must be an uploaded image path or an http(s) URL.');
@@ -393,6 +393,14 @@ export function createApp(options: ServerOptions = {}) {
       updateSeedBooking.run(booking.totalAmount, JSON.stringify(booking), booking.id);
     }
     database.exec('PRAGMA user_version = 1');
+  }
+  if (pricingVersion < 2) {
+    // Bundled car photos moved from /src/assets/images/ to /images/ (served from public/).
+    database.exec(`
+      UPDATE cars SET details_json = REPLACE(details_json, '/src/assets/images/', '/images/');
+      UPDATE bookings SET payload_json = REPLACE(payload_json, '/src/assets/images/', '/images/');
+      PRAGMA user_version = 2;
+    `);
   }
 
   const addSeedBooking = database.prepare(`

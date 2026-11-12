@@ -1,211 +1,150 @@
 import React from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { X, RotateCcw, Check } from 'lucide-react';
-import { CarCategory, FilterOptions } from '../../types/car';
+import { Check, RotateCcw } from 'lucide-react';
+import type { FilterOptions } from '../../types/car';
+import { useAppState } from '../../state/AppState';
+import { CATEGORIES, filterCars, PRICE_MAX, PRICE_MIN, SORT_OPTIONS } from '../../lib/filters';
 import { formatNaira } from '../../utils/currency';
+import { Button, cn } from '../ui/Button';
+import { Sheet } from '../ui/Sheet';
 
-interface FilterModalProps {
-  isOpen: boolean;
-  onClose: () => void;
+const chip = (selected: boolean) =>
+  cn(
+    'min-h-11 rounded-xl px-4 text-sm font-semibold transition-colors',
+    selected ? 'bg-ink text-white' : 'bg-surface-2 text-ink-muted hover:bg-line'
+  );
+
+interface FilterPanelProps {
   filters: FilterOptions;
-  onFilterChange: (filters: FilterOptions) => void;
-  onReset: () => void;
-  carCount: number;
+  onChange: (filters: FilterOptions) => void;
+  /** Sort is shown inline on the Explore toolbar, so the sidebar can hide it. */
+  showSort?: boolean;
 }
 
-const CATEGORIES: CarCategory[] = ['All', 'Sports', 'SUV', 'Electric', 'Luxury'];
+export const FilterPanel: React.FC<FilterPanelProps> = ({ filters, onChange, showSort = true }) => (
+  <div className="space-y-7">
+    <fieldset>
+      <legend className="mb-3 text-xs font-bold uppercase tracking-wider text-ink-muted">Category</legend>
+      <div className="flex flex-wrap gap-2">
+        {CATEGORIES.map((cat) => (
+          <button
+            key={cat}
+            type="button"
+            aria-pressed={filters.category === cat}
+            onClick={() => onChange({ ...filters, category: cat })}
+            className={chip(filters.category === cat)}
+          >
+            {cat}
+          </button>
+        ))}
+      </div>
+    </fieldset>
 
-export const FilterModal: React.FC<FilterModalProps> = ({
-  isOpen,
-  onClose,
-  filters,
-  onFilterChange,
-  onReset,
-  carCount
-}) => {
-  if (!isOpen) return null;
+    <fieldset>
+      <div className="mb-2 flex items-center justify-between">
+        <legend className="text-xs font-bold uppercase tracking-wider text-ink-muted">Max daily rate</legend>
+        <span className="text-sm font-bold text-brand">{formatNaira(filters.maxPrice)}</span>
+      </div>
+      <input
+        type="range"
+        min={PRICE_MIN}
+        max={PRICE_MAX}
+        step={10000}
+        value={filters.maxPrice}
+        aria-label="Maximum daily rate"
+        onChange={(e) => onChange({ ...filters, maxPrice: Number(e.target.value) })}
+        className="h-11 w-full accent-brand"
+      />
+      <div className="flex justify-between text-xs text-ink-soft">
+        <span>{formatNaira(PRICE_MIN)}</span>
+        <span>{formatNaira(PRICE_MAX)}</span>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend className="mb-3 text-xs font-bold uppercase tracking-wider text-ink-muted">Transmission</legend>
+      <div className="flex flex-wrap gap-2">
+        {(['all', 'Automatic', 'Manual'] as const).map((t) => (
+          <button
+            key={t}
+            type="button"
+            aria-pressed={filters.transmission === t}
+            onClick={() => onChange({ ...filters, transmission: t })}
+            className={chip(filters.transmission === t)}
+          >
+            {t === 'all' ? 'Any' : t}
+          </button>
+        ))}
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend className="mb-3 text-xs font-bold uppercase tracking-wider text-ink-muted">Seats</legend>
+      <div className="grid grid-cols-4 gap-2">
+        {(['all', 2, 4, 5] as const).map((s) => (
+          <button
+            key={String(s)}
+            type="button"
+            aria-pressed={filters.seats === s}
+            onClick={() => onChange({ ...filters, seats: s })}
+            className={chip(filters.seats === s)}
+          >
+            {s === 'all' ? 'Any' : `${s}+`}
+          </button>
+        ))}
+      </div>
+    </fieldset>
+
+    {showSort && (
+      <fieldset>
+        <legend className="mb-2 text-xs font-bold uppercase tracking-wider text-ink-muted">Sort by</legend>
+        <div className="space-y-1">
+          {SORT_OPTIONS.map((opt) => {
+            const selected = filters.sortBy === opt.id;
+            return (
+              <button
+                key={opt.id}
+                type="button"
+                aria-pressed={selected}
+                onClick={() => onChange({ ...filters, sortBy: opt.id })}
+                className={cn(
+                  'flex min-h-11 w-full items-center justify-between rounded-xl px-3 text-sm font-semibold transition-colors',
+                  selected ? 'bg-surface-2 text-ink' : 'text-ink-muted hover:bg-surface'
+                )}
+              >
+                {opt.label}
+                {selected && <Check className="size-4 text-brand" />}
+              </button>
+            );
+          })}
+        </div>
+      </fieldset>
+    )}
+  </div>
+);
+
+export const FilterModal: React.FC = () => {
+  const { filterSheetOpen, setFilterSheetOpen, filters, setFilters, resetFilters, cars } = useAppState();
+  const resultCount = filterCars(cars, filters).length;
+  const close = () => setFilterSheetOpen(false);
 
   return (
-    <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm">
-        <motion.div
-          initial={{ opacity: 0, y: 120 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: 120 }}
-          transition={{ type: 'spring', damping: 26, stiffness: 300 }}
-          className="w-full sm:max-w-md bg-white rounded-t-[32px] sm:rounded-[32px] overflow-hidden shadow-2xl flex flex-col max-h-[90vh]"
-        >
-          {/* Header */}
-          <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-slate-100">
-            <h3 className="text-lg font-bold text-[#080808]">Filter Vehicles</h3>
-            <div className="flex items-center gap-3">
-              <button
-                onClick={onReset}
-                className="text-xs font-semibold text-[#4D5056] hover:text-[#D61B04] flex items-center gap-1 transition-colors"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                <span>Reset</span>
-              </button>
-              <button
-                onClick={onClose}
-                className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-[#4D5056] hover:text-[#080808] transition-colors"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-
-          {/* Filter Body */}
-          <div className="p-6 space-y-6 overflow-y-auto">
-            {/* Category */}
-            <div>
-              <label className="text-xs font-bold uppercase tracking-wider text-[#4D5056] block mb-3">
-                Vehicle Category
-              </label>
-              <div className="flex flex-wrap gap-2">
-                {CATEGORIES.map((cat) => {
-                  const isSelected = filters.category === cat;
-                  return (
-                    <button
-                      key={cat}
-                      onClick={() => onFilterChange({ ...filters, category: cat })}
-                      className={`px-4 py-2 rounded-xl text-xs font-semibold transition-all ${
-                        isSelected
-                          ? 'bg-[#080808] text-white shadow-md'
-                          : 'bg-[#F4F4F6] text-[#4D5056] hover:bg-slate-200'
-                      }`}
-                    >
-                      {cat}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Price Range */}
-            <div>
-              <div className="flex justify-between items-center mb-2">
-                <label className="text-xs font-bold uppercase tracking-wider text-[#4D5056]">
-                  Daily Rate (Max)
-                </label>
-                <span className="text-xs font-bold text-[#D61B04]">
-                  {formatNaira(filters.maxPrice)} <span className="text-xs font-normal text-[#B1B1B2]">/day</span>
-                </span>
-              </div>
-              <input
-                type="range"
-                min="150000"
-                max="1000000"
-                step="10000"
-                value={filters.maxPrice}
-                onChange={(e) =>
-                  onFilterChange({ ...filters, maxPrice: Number(e.target.value) })
-                }
-                className="w-full accent-[#D61B04] cursor-pointer"
-              />
-              <div className="flex justify-between text-[11px] text-[#B1B1B2] mt-1 font-mono">
-                <span>{formatNaira(150000)}/day</span>
-                <span>{formatNaira(1000000)}/day</span>
-              </div>
-            </div>
-
-            {/* Transmission */}
-            <div>
-              <label className="text-xs font-bold uppercase tracking-wider text-[#4D5056] block mb-3">
-                Transmission
-              </label>
-              <div className="grid grid-cols-3 gap-2">
-                {(['all', 'Automatic', 'Manual'] as const).map((trans) => {
-                  const isSelected = filters.transmission === trans;
-                  return (
-                    <button
-                      key={trans}
-                      onClick={() => onFilterChange({ ...filters, transmission: trans })}
-                      className={`py-2.5 px-3 rounded-xl text-xs font-semibold text-center transition-all ${
-                        isSelected
-                          ? 'bg-[#080808] text-white'
-                          : 'bg-[#F4F4F6] text-[#4D5056] hover:bg-slate-200'
-                      }`}
-                    >
-                      {trans === 'all' ? 'All Types' : trans}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Seating Capacity */}
-            <div>
-              <label className="text-xs font-bold uppercase tracking-wider text-[#4D5056] block mb-3">
-                Seating Capacity
-              </label>
-              <div className="grid grid-cols-4 gap-2">
-                {([ 'all', 2, 4, 5 ] as const).map((seat) => {
-                  const isSelected = filters.seats === seat;
-                  return (
-                    <button
-                      key={String(seat)}
-                      onClick={() => onFilterChange({ ...filters, seats: seat })}
-                      className={`py-2 px-3 rounded-xl text-xs font-semibold text-center transition-all ${
-                        isSelected
-                          ? 'bg-[#080808] text-white'
-                          : 'bg-[#F4F4F6] text-[#4D5056] hover:bg-slate-200'
-                      }`}
-                    >
-                      {seat === 'all' ? 'Any' : `${seat} Seats`}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Sort Order */}
-            <div>
-              <label className="text-xs font-bold uppercase tracking-wider text-[#4D5056] block mb-3">
-                Sort Results By
-              </label>
-              <div className="space-y-1.5">
-                {[
-                  { id: 'recommended', label: 'Recommended & Popular' },
-                  { id: 'price-asc', label: 'Price: Lowest first' },
-                  { id: 'price-desc', label: 'Price: Highest first' },
-                  { id: 'rating', label: 'Customer Rating' },
-                  { id: 'power', label: 'Engine Horsepower (HP)' },
-                ].map((item) => {
-                  const isSelected = filters.sortBy === item.id;
-                  return (
-                    <button
-                      key={item.id}
-                      onClick={() =>
-                        onFilterChange({
-                          ...filters,
-                          sortBy: item.id as FilterOptions['sortBy'],
-                        })
-                      }
-                      className={`w-full flex items-center justify-between p-3 rounded-xl text-xs font-semibold transition-colors ${
-                        isSelected ? 'bg-slate-100 text-[#080808]' : 'text-[#4D5056] hover:bg-slate-50'
-                      }`}
-                    >
-                      <span>{item.label}</span>
-                      {isSelected && <Check className="w-4 h-4 text-[#D61B04]" />}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-
-          {/* Footer CTA */}
-          <div className="p-6 border-t border-slate-100 bg-[#F9F9F9]">
-            <button
-              onClick={onClose}
-              className="w-full py-3.5 rounded-2xl bg-[#D61B04] text-white text-sm font-bold shadow-lg shadow-[#D61B04]/25 hover:bg-[#B01402] active:scale-[0.98] transition-all"
-            >
-              Show {carCount} Available {carCount === 1 ? 'Car' : 'Cars'}
-            </button>
-          </div>
-        </motion.div>
-      </div>
-    </AnimatePresence>
+    <Sheet
+      open={filterSheetOpen}
+      onClose={close}
+      title="Filters"
+      headerAction={
+        <Button variant="ghost" size="sm" onClick={resetFilters}>
+          <RotateCcw className="size-4" />
+          Reset
+        </Button>
+      }
+      footer={
+        <Button block size="lg" onClick={close} disabled={resultCount === 0}>
+          {resultCount === 0 ? 'No cars match' : `Show ${resultCount} ${resultCount === 1 ? 'car' : 'cars'}`}
+        </Button>
+      }
+    >
+      <FilterPanel filters={filters} onChange={setFilters} />
+    </Sheet>
   );
 };

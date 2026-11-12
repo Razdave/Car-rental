@@ -1,218 +1,144 @@
-import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { 
-  X, Lock, Unlock, Zap, Wind, 
-  Volume2, Car as CarIcon, BatteryCharging, 
-  MapPin, CheckCircle2, AlertCircle 
-} from 'lucide-react';
-import { Booking } from '../../types/car';
+import React, { useEffect, useRef, useState } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
+import { CheckCircle2, Lock, MapPin, Unlock, Volume2, Wind, Zap } from 'lucide-react';
+import type { Booking } from '../../types/car';
+import { cn } from '../ui/Button';
+import { Sheet } from '../ui/Sheet';
 
 interface DigitalKeyModalProps {
-  booking: Booking;
-  isOpen: boolean;
+  booking: Booking | null;
   onClose: () => void;
 }
 
-export const DigitalKeyModal: React.FC<DigitalKeyModalProps> = ({ booking, isOpen, onClose }) => {
+/**
+ * Demo remote-key controls. No vehicle telematics are connected yet,
+ * so the panel is labelled as a preview.
+ */
+export const DigitalKeyModal: React.FC<DigitalKeyModalProps> = ({ booking, onClose }) => {
   const [isLocked, setIsLocked] = useState(true);
   const [isLightsOn, setIsLightsOn] = useState(false);
-  const [isClimateOn, setIsClimateOn] = useState(true);
-  const [targetTemp, setTargetTemp] = useState(70);
-  const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
+  const [isClimateOn, setIsClimateOn] = useState(false);
+  const [feedback, setFeedback] = useState<string | null>(null);
+  const timer = useRef<number | undefined>(undefined);
 
-  if (!isOpen) return null;
+  useEffect(() => () => window.clearTimeout(timer.current), []);
 
-  const triggerFeedback = (msg: string) => {
-    setFeedbackMessage(msg);
-    setTimeout(() => {
-      setFeedbackMessage(null);
-    }, 2500);
+  const flash = (msg: string) => {
+    setFeedback(msg);
+    window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => setFeedback(null), 2400);
   };
 
-  const handleToggleLock = () => {
-    const nextState = !isLocked;
-    setIsLocked(nextState);
-    triggerFeedback(nextState ? 'Doors locked & alarmed' : 'Vehicle unlocked & ready to drive');
-  };
-
-  const handleFlashLights = () => {
-    setIsLightsOn(true);
-    triggerFeedback('Headlights flashed twice');
-    setTimeout(() => setIsLightsOn(false), 1200);
-  };
-
-  const handleHonk = () => {
-    triggerFeedback('Horn sounded (Beep Beep!)');
-  };
-
-  const handleToggleClimate = () => {
-    const next = !isClimateOn;
-    setIsClimateOn(next);
-    triggerFeedback(next ? `Pre-conditioning cabin to ${targetTemp}°F` : 'Climate system stopped');
-  };
+  const commands = [
+    {
+      label: 'Lights',
+      icon: Zap,
+      active: isLightsOn,
+      onClick: () => {
+        setIsLightsOn(true);
+        flash('Headlights flashed');
+        window.setTimeout(() => setIsLightsOn(false), 1200);
+      }
+    },
+    { label: 'Horn', icon: Volume2, active: false, onClick: () => flash('Horn sounded') },
+    {
+      label: isClimateOn ? 'Climate on' : 'Climate',
+      icon: Wind,
+      active: isClimateOn,
+      onClick: () => {
+        setIsClimateOn((v) => !v);
+        flash(isClimateOn ? 'Climate stopped' : 'Pre-cooling cabin to 21°C');
+      }
+    }
+  ];
 
   return (
-    <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/70 backdrop-blur-sm">
-        <motion.div
-          initial={{ opacity: 0, y: 100 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: 100 }}
-          transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-          className="w-full sm:max-w-md bg-[#0D0E11] text-white rounded-t-[32px] sm:rounded-[32px] overflow-hidden border border-white/10 shadow-2xl max-h-[90vh] flex flex-col"
-        >
-          {/* Header */}
-          <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-white/10">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-[#D61B04]/20 border border-[#D61B04]/40 flex items-center justify-center text-[#D61B04]">
-                <Zap className="w-5 h-5 fill-current" />
-              </div>
-              <div>
-                <h3 className="text-base font-bold tracking-tight text-white">Smart Digital Key</h3>
-                <p className="text-xs text-white/60">Bluetooth Low Energy Connected</p>
-              </div>
-            </div>
-            <button
-              onClick={onClose}
-              className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center text-white/80 hover:text-white transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-
-          {/* Feedback banner */}
-          <div className="h-8 flex items-center justify-center px-4">
+    <Sheet open={booking !== null} onClose={onClose} tone="dark" title="Digital key" description="Preview — remote commands are simulated">
+      {booking && (
+        <div className="space-y-4">
+          <div className="flex h-8 items-center justify-center" aria-live="polite">
             <AnimatePresence>
-              {feedbackMessage && (
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.9 }}
-                  className="inline-flex items-center gap-1.5 px-3 py-1 bg-white/15 rounded-full text-xs font-medium text-emerald-400 border border-emerald-500/30"
+              {feedback && (
+                <motion.span
+                  initial={{ opacity: 0, y: 4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-white/10 px-3 py-1 text-sm font-medium text-emerald-300"
                 >
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>{feedbackMessage}</span>
-                </motion.div>
+                  <CheckCircle2 className="size-4" />
+                  {feedback}
+                </motion.span>
               )}
             </AnimatePresence>
           </div>
 
-          {/* Vehicle visual card */}
-          <div className="px-6 py-2">
-            <div className={`relative p-5 rounded-2xl bg-gradient-to-b from-white/10 to-white/5 border transition-all duration-300 ${isLightsOn ? 'border-amber-400/80 shadow-[0_0_30px_rgba(251,191,36,0.3)]' : 'border-white/10'}`}>
-              <div className="flex justify-between items-start mb-2">
-                <div>
-                  <span className="text-[11px] font-semibold text-white/50 uppercase tracking-wider">{booking.car.brand}</span>
-                  <h4 className="text-lg font-bold text-white leading-tight">{booking.car.name}</h4>
-                </div>
-                <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold ${isLocked ? 'bg-white/10 text-white/70' : 'bg-[#D61B04] text-white'}`}>
-                  {isLocked ? 'LOCKED' : 'UNLOCKED'}
-                </span>
+          <div
+            className={cn(
+              'rounded-2xl border bg-gradient-to-b from-white/10 to-white/5 p-4 transition-shadow duration-300',
+              isLightsOn ? 'border-amber-400/80 shadow-[0_0_30px_rgb(251_191_36/0.3)]' : 'border-white/10'
+            )}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-xs font-semibold uppercase tracking-wider text-white/50">{booking.car.brand}</p>
+                <p className="truncate text-lg font-bold">{booking.car.name}</p>
               </div>
-
-              {/* Car photo */}
-              <div className="relative h-36 flex items-center justify-center my-1 overflow-hidden rounded-xl bg-black/40">
-                <img
-                  src={booking.car.imageUrl}
-                  alt={booking.car.name}
-                  className={`max-h-full max-w-full object-contain transition-all duration-500 ${isLightsOn ? 'filter drop-shadow-[0_0_15px_rgba(255,255,255,0.7)]' : ''}`}
-                />
-                {isLightsOn && (
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: [0, 1, 0.4, 1, 0] }}
-                    transition={{ duration: 1.2 }}
-                    className="absolute inset-0 bg-amber-400/20 pointer-events-none"
-                  />
+              <span
+                className={cn(
+                  'shrink-0 rounded-full px-2.5 py-1 text-xs font-bold',
+                  isLocked ? 'bg-white/10 text-white/70' : 'bg-brand text-white'
                 )}
-              </div>
-
-              {/* Telemetry info */}
-              <div className="grid grid-cols-3 gap-2 pt-3 border-t border-white/10 text-center">
-                <div className="p-2 rounded-xl bg-black/30">
-                  <span className="text-[10px] text-white/50 block">Fuel / Battery</span>
-                  <span className="text-sm font-bold text-emerald-400 flex items-center justify-center gap-1">
-                    <BatteryCharging className="w-3.5 h-3.5" /> 88%
-                  </span>
-                </div>
-                <div className="p-2 rounded-xl bg-black/30">
-                  <span className="text-[10px] text-white/50 block">Range</span>
-                  <span className="text-sm font-bold text-white">295 mi</span>
-                </div>
-                <div className="p-2 rounded-xl bg-black/30">
-                  <span className="text-[10px] text-white/50 block">Cabin Temp</span>
-                  <span className="text-sm font-bold text-amber-300">{targetTemp}°F</span>
-                </div>
-              </div>
+              >
+                {isLocked ? 'Locked' : 'Unlocked'}
+              </span>
+            </div>
+            <div className="mt-2 flex h-36 items-center justify-center overflow-hidden rounded-xl bg-black/40">
+              <img src={booking.car.imageUrl} alt="" className="max-h-full max-w-full object-contain" />
             </div>
           </div>
 
-          {/* Key control actions */}
-          <div className="p-6 space-y-4 overflow-y-auto">
-            {/* Primary Lock/Unlock giant button */}
-            <button
-              onClick={handleToggleLock}
-              className={`w-full py-4 rounded-2xl font-bold flex items-center justify-center gap-3 transition-all duration-200 active:scale-[0.98] shadow-lg ${
-                isLocked 
-                  ? 'bg-gradient-to-r from-[#D61B04] to-[#B01402] text-white shadow-[#D61B04]/30' 
-                  : 'bg-white text-[#080808] hover:bg-white/90 shadow-white/20'
-              }`}
-            >
-              {isLocked ? (
-                <>
-                  <Unlock className="w-5 h-5" />
-                  <span>Tap to Unlock Vehicle</span>
-                </>
-              ) : (
-                <>
-                  <Lock className="w-5 h-5" />
-                  <span>Tap to Lock Vehicle</span>
-                </>
-              )}
-            </button>
+          <button
+            type="button"
+            onClick={() => {
+              setIsLocked((v) => !v);
+              flash(isLocked ? 'Vehicle unlocked' : 'Doors locked');
+            }}
+            className={cn(
+              'flex min-h-14 w-full items-center justify-center gap-3 rounded-2xl text-base font-bold transition-colors active:scale-[0.98]',
+              isLocked ? 'bg-brand text-white hover:bg-brand-dark' : 'bg-white text-ink hover:bg-white/90'
+            )}
+          >
+            {isLocked ? <Unlock className="size-5" /> : <Lock className="size-5" />}
+            {isLocked ? 'Unlock vehicle' : 'Lock vehicle'}
+          </button>
 
-            {/* Remote commands grid */}
-            <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-3 gap-2">
+            {commands.map((c) => (
               <button
-                onClick={handleFlashLights}
-                className="p-3.5 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 active:scale-95 transition-all text-center flex flex-col items-center justify-center gap-1.5"
+                key={c.label}
+                type="button"
+                onClick={c.onClick}
+                aria-pressed={c.active}
+                className={cn(
+                  'flex min-h-20 flex-col items-center justify-center gap-1.5 rounded-2xl border text-sm font-semibold transition-colors active:scale-95',
+                  c.active ? 'border-emerald-500/40 bg-emerald-500/20 text-emerald-300' : 'border-white/10 bg-white/5 text-white/90 hover:bg-white/10'
+                )}
               >
-                <Zap className="w-5 h-5 text-amber-400" />
-                <span className="text-xs font-semibold text-white/90">Flash Lights</span>
+                <c.icon className="size-5" />
+                {c.label}
               </button>
-
-              <button
-                onClick={handleHonk}
-                className="p-3.5 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 active:scale-95 transition-all text-center flex flex-col items-center justify-center gap-1.5"
-              >
-                <Volume2 className="w-5 h-5 text-blue-400" />
-                <span className="text-xs font-semibold text-white/90">Honk Horn</span>
-              </button>
-
-              <button
-                onClick={handleToggleClimate}
-                className={`p-3.5 rounded-2xl border active:scale-95 transition-all text-center flex flex-col items-center justify-center gap-1.5 ${
-                  isClimateOn 
-                    ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300' 
-                    : 'bg-white/5 border-white/10 text-white/90'
-                }`}
-              >
-                <Wind className="w-5 h-5" />
-                <span className="text-xs font-semibold">{isClimateOn ? 'Climate On' : 'Climate Off'}</span>
-              </button>
-            </div>
-
-            {/* Location & Passcode */}
-            <div className="p-3.5 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between text-xs">
-              <div className="flex items-center gap-2 text-white/70">
-                <MapPin className="w-4 h-4 text-[#D61B04]" />
-                <span>{booking.pickupLocation}</span>
-              </div>
-              <span className="font-mono text-white/50">{booking.digitalPassCode}</span>
-            </div>
+            ))}
           </div>
-        </motion.div>
-      </div>
-    </AnimatePresence>
+
+          <div className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 p-3.5 text-sm">
+            <span className="flex min-w-0 items-center gap-2 text-white/70">
+              <MapPin className="size-4 shrink-0 text-brand" />
+              <span className="truncate">{booking.pickupLocation}</span>
+            </span>
+            <span className="shrink-0 font-mono text-xs text-white/50">{booking.digitalPassCode}</span>
+          </div>
+        </div>
+      )}
+    </Sheet>
   );
 };

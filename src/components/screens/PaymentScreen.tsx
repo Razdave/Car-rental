@@ -1,432 +1,339 @@
 import React, { useState } from 'react';
-import { motion } from 'motion/react';
-import { 
-  ChevronLeft, CreditCard, ShieldCheck, 
-  Lock, CheckCircle2, Tag, Loader2, Sparkles 
-} from 'lucide-react';
-import { Car, ExtraService, DriverInfo, Booking } from '../../types/car';
+import { Link, Navigate, useNavigate } from 'react-router-dom';
+import { CreditCard, Loader2, Lock, Tag, X } from 'lucide-react';
+import type { Booking } from '../../types/car';
+import { useAppState } from '../../state/AppState';
+import { createBooking } from '../../lib/api';
+import { formatDate } from '../../lib/dates';
+import { durationLabel, PROMO_CODES } from '../../lib/pricing';
 import { formatNaira } from '../../utils/currency';
+import { BookingSteps, CarSummary, Field, PriceSummary } from '../booking/BookingParts';
+import { Button, cn } from '../ui/Button';
+import { Card, Container, DetailHeader, MobileActionBar, SectionLabel } from '../ui/Layout';
 
-interface PaymentScreenProps {
-  bookingDraft: {
-    car: Car;
-    pickupDate: string;
-    returnDate: string;
-    pickupTime: string;
-    returnTime: string;
-    pickupLocation: string;
-    returnLocation: string;
-    durationUnit: 'day' | 'hour';
-    durationValue: number;
-    totalDays: number;
-    basePrice: number;
-    extraServices: ExtraService[];
-    taxAmount: number;
-    totalAmount: number;
-    driverInfo: DriverInfo;
-  };
-  onBack: () => void;
-  onPaymentSuccess: (newBooking: Booking) => void;
-}
+type Method = 'card' | 'applepay' | 'googlepay' | 'paypal';
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null;
+const METHODS: { id: Method; label: string; sub: string }[] = [
+  { id: 'card', label: 'Card', sub: 'Visa, Mastercard, Verve' },
+  { id: 'applepay', label: 'Apple Pay', sub: 'Fast checkout' },
+  { id: 'googlepay', label: 'Google Pay', sub: 'Fast checkout' },
+  { id: 'paypal', label: 'PayPal', sub: 'Pay with your account' }
+];
 
-const isBooking = (value: unknown): value is Booking =>
-  isRecord(value) &&
-  typeof value.id === 'string' &&
-  typeof value.carId === 'string' &&
-  isRecord(value.car) &&
-  typeof value.pickupDate === 'string' &&
-  typeof value.returnDate === 'string' &&
-  typeof value.totalAmount === 'number' &&
-  Array.isArray(value.extraServices) &&
-  isRecord(value.driverInfo) &&
-  typeof value.managementStatus === 'string';
+const digits = (v: string) => v.replace(/\D/g, '');
+const formatCardNumber = (v: string) => digits(v).slice(0, 19).replace(/(\d{4})(?=\d)/g, '$1 ');
+const formatExpiry = (v: string) => {
+  const d = digits(v).slice(0, 4);
+  return d.length > 2 ? `${d.slice(0, 2)}/${d.slice(2)}` : d;
+};
+const cardBrand = (num: string) => {
+  const d = digits(num);
+  if (/^4/.test(d)) return 'Visa';
+  if (/^(5[1-5]|2[2-7])/.test(d)) return 'Mastercard';
+  if (/^(506|507|650)/.test(d)) return 'Verve';
+  if (/^3[47]/.test(d)) return 'Amex';
+  return 'Card';
+};
 
-export const PaymentScreen: React.FC<PaymentScreenProps> = ({
-  bookingDraft,
-  onBack,
-  onPaymentSuccess
-}) => {
-  const [selectedMethod, setSelectedMethod] = useState<'card' | 'applepay' | 'googlepay' | 'paypal'>('card');
-  const [cardNumber, setCardNumber] = useState('4242 •••• •••• 8821');
-  const [cardHolder, setCardHolder] = useState(bookingDraft.driverInfo.fullName || 'Alex Harrison');
-  const [expiry, setExpiry] = useState('08/28');
-  const [cvv, setCvv] = useState('742');
-  
-  // Promo code
-  const [promoCode, setPromoCode] = useState('');
-  const [discountAmount, setDiscountAmount] = useState(0);
-  const [promoApplied, setPromoApplied] = useState(false);
+type CardErrors = Partial<Record<'holder' | 'number' | 'expiry' | 'cvc', string>>;
+
+const validateCard = (holder: string, number: string, expiry: string, cvc: string): CardErrors => {
+  const e: CardErrors = {};
+  if (holder.trim().length < 2) e.holder = 'Enter the name on the card.';
+  const n = digits(number);
+  if (n.length < 13 || n.length > 19) e.number = 'Enter a valid card number.';
+  const m = /^(\d{2})\/(\d{2})$/.exec(expiry);
+  if (!m || Number(m[1]) < 1 || Number(m[1]) > 12) e.expiry = 'Use MM/YY.';
+  else {
+    const now = new Date();
+    const exp = new Date(2000 + Number(m[2]), Number(m[1]), 1);
+    if (exp <= new Date(now.getFullYear(), now.getMonth(), 1)) e.expiry = 'This card has expired.';
+  }
+  if (!/^\d{3,4}$/.test(cvc)) e.cvc = '3 or 4 digits.';
+  return e;
+};
+
+export const PaymentScreen: React.FC = () => {
+  const { draft, setDraft, addBooking, fleetSource } = useAppState();
+  const navigate = useNavigate();
+
+  const [method, setMethod] = useState<Method>('card');
+  const [holder, setHolder] = useState(draft?.driverInfo.fullName ?? '');
+  const [number, setNumber] = useState('');
+  const [expiry, setExpiry] = useState('');
+  const [cvc, setCvc] = useState('');
+  const [cardErrors, setCardErrors] = useState<CardErrors>({});
+
+  const [promoInput, setPromoInput] = useState('');
+  const [promo, setPromo] = useState<string | null>(null);
   const [promoError, setPromoError] = useState<string | null>(null);
-  const [paymentError, setPaymentError] = useState<string | null>(null);
 
-  // Payment processing state
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [processing, setProcessing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const finalTotal = Math.max(0, bookingDraft.totalAmount - discountAmount);
+  if (!draft) return <Navigate to="/explore" replace />;
 
-  const handleApplyPromo = () => {
-    const code = promoCode.trim().toUpperCase();
-    if (code === 'DRIVE20') {
-      const discount = Math.round(bookingDraft.totalAmount * 0.2);
-      setDiscountAmount(discount);
-      setPromoApplied(true);
-      setPromoError(null);
-    } else if (code === 'VIP10') {
-      setDiscountAmount(50000);
-      setPromoApplied(true);
+  const discount = promo ? PROMO_CODES[promo].discount(draft.totalAmount) : 0;
+  const total = Math.max(0, draft.totalAmount - discount);
+  const extrasTotal = draft.totalAmount - draft.basePrice - draft.taxAmount;
+
+  const applyPromo = (event: React.FormEvent) => {
+    event.preventDefault();
+    const code = promoInput.trim().toUpperCase();
+    if (PROMO_CODES[code]) {
+      setPromo(code);
       setPromoError(null);
     } else {
-      setPromoError('Invalid coupon. Try "DRIVE20" for 20% off!');
+      setPromoError('That code isn’t valid. Try DRIVE20.');
     }
   };
 
-  const handleConfirmPayment = async () => {
-    setIsProcessing(true);
-    setPaymentError(null);
-    try {
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-      const referenceId = `BK-${Math.floor(10000 + Math.random() * 90000)}`;
-      const digitalPassCode = `PASS-${bookingDraft.car.brand.slice(0, 3).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
-
-      const newBooking: Booking = {
-        id: referenceId,
-        carId: bookingDraft.car.id,
-        car: bookingDraft.car,
-        pickupDate: bookingDraft.pickupDate,
-        returnDate: bookingDraft.returnDate,
-        pickupTime: bookingDraft.pickupTime,
-        returnTime: bookingDraft.returnTime,
-        pickupLocation: bookingDraft.pickupLocation,
-        returnLocation: bookingDraft.returnLocation,
-        durationUnit: bookingDraft.durationUnit,
-        durationValue: bookingDraft.durationValue,
-        totalDays: bookingDraft.totalDays,
-        basePrice: bookingDraft.basePrice,
-        extraServices: bookingDraft.extraServices,
-        discount: discountAmount,
-        taxAmount: bookingDraft.taxAmount,
-        totalAmount: finalTotal,
-        status: 'upcoming',
-        driverInfo: bookingDraft.driverInfo,
-        paymentMethod:
-          selectedMethod === 'card'
-            ? `Visa •••• ${cardNumber.slice(-4) || '8821'}`
-            : selectedMethod === 'applepay'
-            ? 'Apple Pay'
-            : selectedMethod === 'googlepay'
-            ? 'Google Pay'
-            : 'PayPal',
-        createdAt: new Date().toISOString(),
-        digitalPassCode
-      };
-
-      const response = await fetch('/api/bookings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...newBooking,
-          promoCode: promoApplied ? promoCode.trim().toUpperCase() : ''
-        })
-      });
-      const responseBody: unknown = response.headers.get('content-type')?.includes('application/json')
-        ? await response.json()
-        : null;
-      if (!response.ok) {
-        const message = isRecord(responseBody) && typeof responseBody.error === 'string'
-          ? responseBody.error
-          : 'Unable to save this booking. Check the backend connection and try again.';
-        throw new Error(message);
+  const pay = async () => {
+    if (method === 'card') {
+      const errs = validateCard(holder, number, expiry, cvc);
+      setCardErrors(errs);
+      if (Object.keys(errs).length) {
+        document.getElementById('card-form')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
       }
-      if (!isBooking(responseBody)) throw new Error('The booking service returned an invalid response.');
-      const savedBooking: Booking = responseBody;
-      onPaymentSuccess(savedBooking);
-    } catch (error) {
-      console.error('Unable to save the booking.', error);
-      setPaymentError(error instanceof Error ? error.message : 'Unable to save this booking.');
-    } finally {
-      setIsProcessing(false);
+    }
+    setProcessing(true);
+    setError(null);
+    const paymentMethod =
+      method === 'card'
+        ? `${cardBrand(number)} •••• ${digits(number).slice(-4)}`
+        : METHODS.find((m) => m.id === method)!.label;
+
+    try {
+      let booking: Booking;
+      if (fleetSource === 'demo') {
+        // The API is unreachable: keep the flow usable for demos with a device-only booking.
+        await new Promise((r) => setTimeout(r, 900));
+        booking = {
+          ...draft,
+          id: `DEMO-${Math.floor(10000 + Math.random() * 90000)}`,
+          carId: draft.car.id,
+          discount,
+          totalAmount: total,
+          status: 'upcoming',
+          managementStatus: 'pending',
+          paymentMethod,
+          createdAt: new Date().toISOString(),
+          digitalPassCode: `PASS-${Math.random().toString(36).slice(2, 8).toUpperCase()}`
+        };
+      } else {
+        booking = await createBooking({
+          carId: draft.car.id,
+          pickupDate: draft.pickupDate,
+          returnDate: draft.returnDate,
+          pickupTime: draft.pickupTime,
+          returnTime: draft.returnTime,
+          pickupLocation: draft.pickupLocation,
+          returnLocation: draft.returnLocation,
+          durationUnit: draft.durationUnit,
+          extraServices: draft.extraServices.map((s) => ({ id: s.id })),
+          driverInfo: draft.driverInfo,
+          paymentMethod,
+          promoCode: promo ?? undefined
+        });
+      }
+      addBooking(booking);
+      setDraft(null);
+      navigate(`/bookings/${booking.id}?new=1`, { replace: true });
+    } catch (err) {
+      console.error('Unable to save the booking.', err);
+      setError(err instanceof Error ? err.message : 'We couldn’t complete your booking. Please try again.');
+      setProcessing(false);
     }
   };
+
+  const lines = [
+    { label: `Rental (${durationLabel(draft.durationValue, draft.durationUnit)})`, amount: draft.basePrice },
+    ...(extrasTotal > 0 ? [{ label: 'Add-ons', amount: extrasTotal }] : []),
+    { label: 'Taxes & fees', amount: draft.taxAmount },
+    ...(discount > 0 ? [{ label: `Promo ${promo}`, amount: discount, negative: true }] : [])
+  ];
+
+  const payLabel = processing ? 'Processing…' : `Pay ${formatNaira(total)}`;
+  const tripDetail = `${formatDate(draft.pickupDate)} → ${formatDate(draft.returnDate)}`;
 
   return (
-    <div className="min-h-screen bg-[#F9F9F9] pb-32">
-      {/* Top Bar */}
-      <div className="sticky top-0 z-30 px-5 py-3.5 bg-[#F9F9F9]/90 backdrop-blur-md flex items-center justify-between border-b border-slate-100">
-        <button
-          onClick={onBack}
-          disabled={isProcessing}
-          className="w-10 h-10 rounded-full bg-white border border-slate-200 shadow-sm flex items-center justify-center text-[#080808] hover:bg-slate-50 transition-colors"
-        >
-          <ChevronLeft className="w-5 h-5" />
-        </button>
-        <div className="text-center">
-          <span className="text-[10px] font-bold text-[#D61B04] uppercase tracking-wider block">
-            Step 2 of 3
-          </span>
-          <h2 className="text-sm font-extrabold text-[#080808]">Secure Payment</h2>
-        </div>
-        <div className="w-10" />
-      </div>
+    <>
+      <DetailHeader fallback={`/cars/${draft.car.id}/book`} eyebrow="Checkout" title="Payment" />
 
-      {/* Booking Summary Card */}
-      <div className="px-5 pt-4 mb-5">
-        <div className="p-4 rounded-3xl bg-white border border-slate-100 shadow-xs flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-16 h-12 rounded-xl bg-[#F9F9F9] p-1.5 flex items-center justify-center flex-shrink-0">
-              <img
-                src={bookingDraft.car.imageUrl}
-                alt={bookingDraft.car.name}
-                className="max-h-full max-w-full object-contain"
-              />
-            </div>
-            <div>
-              <h4 className="text-xs font-bold text-[#080808] leading-tight">
-                {bookingDraft.car.name}
-              </h4>
-              <p className="text-[11px] text-[#B1B1B2]">
-                {bookingDraft.durationValue} {bookingDraft.durationUnit === 'day'
-                  ? (bookingDraft.durationValue === 1 ? 'Day' : 'Days')
-                  : (bookingDraft.durationValue === 1 ? 'Hour' : 'Hours')} · {bookingDraft.pickupDate}
-              </p>
-            </div>
-          </div>
-          <span className="text-sm font-black text-[#080808]">{formatNaira(finalTotal)}</span>
-        </div>
-      </div>
+      <Container className="pt-5 lg:pt-8">
+        <BookingSteps current={1} />
 
-      {/* Payment Method Selector */}
-      <div className="px-5 mb-5">
-        <h3 className="text-xs font-bold uppercase tracking-wider text-[#4D5056] mb-3">
-          Select Payment Method
-        </h3>
-        <div className="grid grid-cols-2 gap-2.5">
-          {[
-            { id: 'card', label: 'Credit Card', sub: 'Visa, MC, Amex' },
-            { id: 'applepay', label: 'Apple Pay', sub: 'Fast & Secure' },
-            { id: 'googlepay', label: 'Google Pay', sub: 'One-touch checkout' },
-            { id: 'paypal', label: 'PayPal', sub: 'Instant transfer' },
-          ].map((m) => {
-            const isSelected = selectedMethod === m.id;
-            return (
-              <button
-                key={m.id}
-                onClick={() => setSelectedMethod(m.id as any)}
-                className={`p-3.5 rounded-2xl border text-left transition-all ${
-                  isSelected
-                    ? 'bg-[#080808] text-white border-[#080808] shadow-sm'
-                    : 'bg-white text-[#080808] border-slate-100 hover:border-slate-200'
-                }`}
+        <div className="mt-6 lg:grid lg:grid-cols-[minmax(0,1fr)_380px] lg:gap-10">
+          <div className="space-y-8">
+            {/* Trip recap */}
+            <Card className="flex items-center justify-between gap-3 p-4">
+              <CarSummary car={draft.car} detail={tripDetail} />
+              <Link
+                to={`/cars/${draft.car.id}/book`}
+                className="inline-flex min-h-11 shrink-0 items-center px-2 text-sm font-bold text-brand hover:underline"
               >
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs font-bold">{m.label}</span>
-                  <div
-                    className={`w-4 h-4 rounded-full border flex items-center justify-center ${
-                      isSelected ? 'border-[#D61B04] bg-[#D61B04]' : 'border-slate-300'
-                    }`}
+                Edit
+              </Link>
+            </Card>
+
+            {/* Method */}
+            <section>
+              <SectionLabel>Payment method</SectionLabel>
+              <div className="grid grid-cols-2 gap-3" role="radiogroup" aria-label="Payment method">
+                {METHODS.map((m) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={method === m.id}
+                    onClick={() => setMethod(m.id)}
+                    className={cn(
+                      'min-h-20 rounded-2xl border-2 p-4 text-left transition-colors',
+                      method === m.id ? 'border-ink bg-ink text-white' : 'border-line bg-white hover:border-ink-faint'
+                    )}
                   >
-                    {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
-                  </div>
-                </div>
-                <span className={`text-[10px] ${isSelected ? 'text-white/60' : 'text-[#B1B1B2]'}`}>
-                  {m.sub}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Visual Credit Card Preview & Form */}
-      {selectedMethod === 'card' && (
-        <div className="px-5 mb-5">
-          {/* Virtual embossed card */}
-          <div className="relative overflow-hidden rounded-[24px] bg-gradient-to-tr from-[#080808] via-[#1A1A1E] to-[#2B2B30] text-white p-5 shadow-xl mb-4 border border-white/10">
-            <div className="flex justify-between items-start mb-6">
-              <span className="text-[10px] tracking-widest uppercase font-extrabold text-[#D61B04]">
-                APEX PLATINUM
-              </span>
-              <span className="text-xs font-bold tracking-wider text-white/80">VISA</span>
-            </div>
-
-            <div className="my-4 font-mono text-base tracking-widest text-white/95">
-              {cardNumber || '•••• •••• •••• ••••'}
-            </div>
-
-            <div className="flex justify-between items-end text-xs">
-              <div>
-                <span className="text-[9px] uppercase tracking-wider text-white/50 block">
-                  Card Holder
-                </span>
-                <span className="font-bold tracking-wide uppercase text-white truncate max-w-[170px] block">
-                  {cardHolder || 'CARDHOLDER NAME'}
-                </span>
+                    <span className="block font-extrabold">{m.label}</span>
+                    <span className={cn('block text-sm', method === m.id ? 'text-white/70' : 'text-ink-soft')}>{m.sub}</span>
+                  </button>
+                ))}
               </div>
-              <div>
-                <span className="text-[9px] uppercase tracking-wider text-white/50 block text-right">
-                  Expires
-                </span>
-                <span className="font-mono font-bold text-white/90">{expiry || 'MM/YY'}</span>
-              </div>
-            </div>
-          </div>
+            </section>
 
-          {/* Card Input fields */}
-          <div className="bg-white rounded-3xl p-5 border border-slate-100 shadow-xs space-y-3.5">
-            <div>
-              <label className="text-[10px] font-bold text-[#B1B1B2] uppercase block mb-1">
-                Cardholder Name
-              </label>
-              <input
-                type="text"
-                value={cardHolder}
-                onChange={(e) => setCardHolder(e.target.value)}
-                className="w-full p-2.5 rounded-xl bg-[#F9F9F9] border border-slate-200 text-xs font-bold text-[#080808] focus:ring-1 focus:ring-[#D61B04] focus:outline-none"
-                placeholder="Alex Harrison"
-              />
-            </div>
-
-            <div>
-              <label className="text-[10px] font-bold text-[#B1B1B2] uppercase block mb-1">
-                Card Number
-              </label>
-              <input
-                type="text"
-                value={cardNumber}
-                onChange={(e) => setCardNumber(e.target.value)}
-                className="w-full p-2.5 rounded-xl bg-[#F9F9F9] border border-slate-200 text-xs font-bold text-[#080808] focus:ring-1 focus:ring-[#D61B04] focus:outline-none font-mono"
-                placeholder="4242 •••• •••• 8821"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-[10px] font-bold text-[#B1B1B2] uppercase block mb-1">
-                  Expiry Date
-                </label>
-                <input
-                  type="text"
-                  value={expiry}
-                  onChange={(e) => setExpiry(e.target.value)}
-                  className="w-full p-2.5 rounded-xl bg-[#F9F9F9] border border-slate-200 text-xs font-bold text-[#080808] focus:ring-1 focus:ring-[#D61B04] focus:outline-none font-mono"
-                  placeholder="MM/YY"
-                />
-              </div>
-
-              <div>
-                <label className="text-[10px] font-bold text-[#B1B1B2] uppercase block mb-1">
-                  CVV / CVC
-                </label>
-                <input
-                  type="password"
-                  maxLength={4}
-                  value={cvv}
-                  onChange={(e) => setCvv(e.target.value)}
-                  className="w-full p-2.5 rounded-xl bg-[#F9F9F9] border border-slate-200 text-xs font-bold text-[#080808] focus:ring-1 focus:ring-[#D61B04] focus:outline-none font-mono"
-                  placeholder="•••"
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Promo Code Box */}
-      <div className="px-5 mb-5">
-        <h3 className="text-xs font-bold uppercase tracking-wider text-[#4D5056] mb-3">
-          Promo Code or Voucher
-        </h3>
-        <div className="bg-white rounded-3xl p-4 border border-slate-100 shadow-xs">
-          <div className="flex gap-2">
-            <div className="relative flex-1">
-              <Tag className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#B1B1B2]" />
-              <input
-                type="text"
-                placeholder='Enter promo code (e.g. "DRIVE20")'
-                value={promoCode}
-                onChange={(e) => setPromoCode(e.target.value)}
-                disabled={promoApplied}
-                className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-[#F9F9F9] border border-slate-200 text-xs font-bold text-[#080808] uppercase placeholder:normal-case focus:ring-1 focus:ring-[#D61B04] focus:outline-none"
-              />
-            </div>
-            <button
-              onClick={handleApplyPromo}
-              disabled={promoApplied || !promoCode}
-              className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-colors ${
-                promoApplied
-                  ? 'bg-emerald-600 text-white'
-                  : 'bg-[#080808] text-white hover:bg-[#D61B04]'
-              }`}
-            >
-              {promoApplied ? 'Applied ✓' : 'Apply'}
-            </button>
-          </div>
-
-          {promoApplied && (
-            <div className="mt-2 text-xs font-semibold text-emerald-600 flex items-center gap-1.5">
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              <span>Promo applied! Saved {formatNaira(discountAmount)} on this rental.</span>
-            </div>
-          )}
-
-          {promoError && (
-            <div className="mt-2 text-xs font-semibold text-[#D61B04]">
-              {promoError}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {paymentError && (
-        <p role="alert" className="mx-5 mb-4 rounded-xl bg-red-50 p-3 text-xs font-semibold text-[#D61B04]">
-          {paymentError}
-        </p>
-      )}
-
-      {/* Security Guarantee Badge */}
-      <div className="px-5 mb-6">
-        <div className="p-3.5 rounded-2xl bg-[#F4F4F6] flex items-center justify-center gap-2 text-xs font-semibold text-[#4D5056]">
-          <Lock className="w-3.5 h-3.5 text-emerald-600" />
-          <span>Demo checkout only · No real payment is processed</span>
-        </div>
-      </div>
-
-      {/* Sticky Bottom Pay CTA */}
-      <div className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-100 p-4 px-6 shadow-[0_-8px_30px_rgba(0,0,0,0.06)]">
-        <div className="max-w-md mx-auto flex items-center justify-between gap-4">
-          <div>
-            <span className="text-[10px] text-[#B1B1B2] block uppercase font-bold">Total to Pay</span>
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-xl font-black text-[#080808]">{formatNaira(finalTotal)}</span>
-              {discountAmount > 0 && (
-                <span className="text-xs text-[#B1B1B2] line-through font-semibold">
-                  {formatNaira(bookingDraft.totalAmount)}
-                </span>
-              )}
-            </div>
-          </div>
-
-          <button
-            onClick={handleConfirmPayment}
-            disabled={isProcessing}
-            className="flex-1 max-w-[240px] py-4 rounded-2xl bg-[#D61B04] hover:bg-[#B01402] text-white text-sm font-extrabold shadow-lg shadow-[#D61B04]/30 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
-          >
-            {isProcessing ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Authorizing...</span>
-              </>
-            ) : (
-              <>
-                <Lock className="w-4 h-4" />
-                <span>Confirm & Pay {formatNaira(finalTotal)}</span>
-              </>
+            {method === 'card' && (
+              <section id="card-form" className="scroll-mt-40">
+                <SectionLabel>Card details</SectionLabel>
+                <Card className="grid grid-cols-2 gap-4 p-4 sm:p-5">
+                  <Field label="Name on card" error={cardErrors.holder} className="col-span-2">
+                    <input className="field" autoComplete="cc-name" value={holder} onChange={(e) => setHolder(e.target.value)} />
+                  </Field>
+                  <Field label="Card number" error={cardErrors.number} className="col-span-2">
+                    <div className="relative">
+                      <input
+                        className="field pr-24 font-mono tracking-wider"
+                        inputMode="numeric"
+                        autoComplete="cc-number"
+                        placeholder="1234 5678 9012 3456"
+                        value={number}
+                        onChange={(e) => setNumber(formatCardNumber(e.target.value))}
+                      />
+                      <span className="pointer-events-none absolute right-4 top-1/2 flex -translate-y-1/2 items-center gap-1.5 text-sm font-bold text-ink-soft">
+                        <CreditCard className="size-4" />
+                        {digits(number).length > 0 && cardBrand(number)}
+                      </span>
+                    </div>
+                  </Field>
+                  <Field label="Expiry" error={cardErrors.expiry}>
+                    <input
+                      className="field font-mono"
+                      inputMode="numeric"
+                      autoComplete="cc-exp"
+                      placeholder="MM/YY"
+                      value={expiry}
+                      onChange={(e) => setExpiry(formatExpiry(e.target.value))}
+                    />
+                  </Field>
+                  <Field label="CVC" error={cardErrors.cvc}>
+                    <input
+                      className="field font-mono"
+                      inputMode="numeric"
+                      autoComplete="cc-csc"
+                      type="password"
+                      placeholder="•••"
+                      maxLength={4}
+                      value={cvc}
+                      onChange={(e) => setCvc(digits(e.target.value))}
+                    />
+                  </Field>
+                </Card>
+              </section>
             )}
-          </button>
+
+            {/* Promo */}
+            <section>
+              <SectionLabel>Promo code</SectionLabel>
+              {promo ? (
+                <div className="flex items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                  <span className="flex items-center gap-2 text-sm font-bold text-emerald-800">
+                    <Tag className="size-4" />
+                    {promo} · {PROMO_CODES[promo].label} (−{formatNaira(discount)})
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setPromo(null)}
+                    aria-label="Remove promo code"
+                    className="flex size-11 items-center justify-center rounded-full text-emerald-800 hover:bg-emerald-100"
+                  >
+                    <X className="size-4" />
+                  </button>
+                </div>
+              ) : (
+                <form onSubmit={applyPromo} className="flex gap-2">
+                  <label className="flex-1">
+                    <span className="sr-only">Promo code</span>
+                    <input
+                      className="field uppercase"
+                      placeholder="Enter code"
+                      autoCapitalize="characters"
+                      value={promoInput}
+                      onChange={(e) => {
+                        setPromoInput(e.target.value);
+                        setPromoError(null);
+                      }}
+                      aria-invalid={promoError ? true : undefined}
+                    />
+                  </label>
+                  <Button type="submit" variant="dark" disabled={!promoInput.trim()}>
+                    Apply
+                  </Button>
+                </form>
+              )}
+              {promoError && <p className="mt-2 text-sm font-semibold text-brand">{promoError}</p>}
+            </section>
+
+            {/* Summary (phones/tablets) */}
+            <section className="lg:hidden">
+              <SectionLabel>Price</SectionLabel>
+              <Card className="p-5">
+                <PriceSummary lines={lines} total={total} />
+              </Card>
+            </section>
+
+            {error && (
+              <p role="alert" className="rounded-2xl bg-brand-soft p-4 text-sm font-semibold text-brand">
+                {error}
+              </p>
+            )}
+
+            <p className="flex items-center justify-center gap-2 text-sm text-ink-soft">
+              <Lock className="size-4 text-emerald-700" />
+              Demo checkout — no payment is taken.
+            </p>
+          </div>
+
+          <aside className="hidden lg:block">
+            <Card className="sticky top-36 space-y-5 p-6">
+              <CarSummary car={draft.car} detail={tripDetail} />
+              <PriceSummary lines={lines} total={total} />
+              <Button size="lg" block onClick={pay} disabled={processing}>
+                {processing ? <Loader2 className="size-5 animate-spin" /> : <Lock className="size-5" />}
+                {payLabel}
+              </Button>
+            </Card>
+          </aside>
         </div>
-      </div>
-    </div>
+      </Container>
+
+      <MobileActionBar>
+        <div className="min-w-0">
+          <p className="text-xs font-bold uppercase tracking-wider text-ink-soft">Total</p>
+          <p className="text-xl font-extrabold leading-tight">{formatNaira(total)}</p>
+        </div>
+        <Button size="lg" className="flex-1" onClick={pay} disabled={processing}>
+          {processing ? <Loader2 className="size-5 animate-spin" /> : <Lock className="size-5" />}
+          {processing ? 'Processing…' : 'Pay now'}
+        </Button>
+      </MobileActionBar>
+    </>
   );
 };

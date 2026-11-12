@@ -1,248 +1,214 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { 
-  CheckCircle2, QrCode, Calendar, MapPin, 
-  Download, ArrowRight, ShieldCheck, Sparkles, Check 
-} from 'lucide-react';
-import { Booking } from '../../types/car';
+import { CalendarPlus, CheckCircle2, Clock, FileQuestion, KeyRound, MapPin, QrCode, XCircle } from 'lucide-react';
+import { useAppState } from '../../state/AppState';
+import { clientStatusFor, fetchBookingStatus } from '../../lib/api';
+import { downloadBookingCalendar } from '../../lib/calendar';
+import { formatDate } from '../../lib/dates';
+import { bookingDurationLabel } from '../../lib/pricing';
 import { formatNaira } from '../../utils/currency';
+import { BookingSteps, PriceSummary } from '../booking/BookingParts';
+import { CancelBookingSheet } from '../booking/BookingSheets';
+import { DigitalKeyModal } from '../modals/DigitalKeyModal';
+import { Button, cn, LinkButton } from '../ui/Button';
+import { Card, Container, DetailHeader, EmptyState } from '../ui/Layout';
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null;
+const STATUS_COPY = {
+  pending: { title: 'Booking received', body: 'Our team is confirming availability — usually within an hour.', icon: Clock, tint: 'from-amber-500 to-amber-400' },
+  confirmed: { title: 'You’re all set', body: 'Your booking is confirmed. See you at pick-up.', icon: CheckCircle2, tint: 'from-emerald-600 to-emerald-500' },
+  active: { title: 'Trip in progress', body: 'Enjoy the drive. Your digital key is ready.', icon: KeyRound, tint: 'from-brand to-[#FF4528]' },
+  completed: { title: 'Trip completed', body: 'Thanks for driving with Aurevon.', icon: CheckCircle2, tint: 'from-ink to-[#3a3b40]' },
+  cancelled: { title: 'Booking cancelled', body: 'This booking was cancelled.', icon: XCircle, tint: 'from-ink-soft to-ink-faint' }
+} as const;
 
-const isManagementStatus = (value: unknown): value is NonNullable<Booking['managementStatus']> =>
-  value === 'pending' ||
-  value === 'confirmed' ||
-  value === 'active' ||
-  value === 'completed' ||
-  value === 'cancelled';
+export const ConfirmationScreen: React.FC = () => {
+  const { bookingId } = useParams();
+  const [params] = useSearchParams();
+  const navigate = useNavigate();
+  const { bookings, updateBooking } = useAppState();
+  const booking = bookings.find((b) => b.id === bookingId);
+  const isNew = params.get('new') === '1';
+  const [statusError, setStatusError] = useState(false);
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [keyOpen, setKeyOpen] = useState(false);
 
-interface ConfirmationScreenProps {
-  booking: Booking;
-  onGoToBookings: () => void;
-  onGoHome: () => void;
-}
-
-export const ConfirmationScreen: React.FC<ConfirmationScreenProps> = ({
-  booking,
-  onGoToBookings,
-  onGoHome
-}) => {
-  const [downloaded, setDownloaded] = useState(false);
-  const [managementStatus, setManagementStatus] = useState(booking.managementStatus);
-  const [statusError, setStatusError] = useState<string | null>(null);
-
+  // Poll the API for staff status changes (skipped for device-only demo bookings and seed data).
+  const pollable = booking && booking.managementStatus && !booking.id.startsWith('DEMO-') && booking.status !== 'cancelled';
   useEffect(() => {
-    if (!booking.managementStatus) return;
+    if (!pollable || !booking) return;
     let active = true;
-    const refreshStatus = async () => {
+    const refresh = async () => {
       try {
-        const response = await fetch(`/api/bookings/${encodeURIComponent(booking.id)}/status`, {
-          headers: { 'X-Booking-Email': booking.driverInfo.email }
-        });
-        const result: unknown = await response.json();
-        if (!response.ok) {
-          const message = isRecord(result) && typeof result.error === 'string'
-            ? result.error
-            : 'Could not refresh the booking status.';
-          throw new Error(message);
-        }
-        if (
-          !isRecord(result) ||
-          !isManagementStatus(result.managementStatus)
-        ) {
-          throw new Error('Booking status response is invalid.');
-        }
-        if (active) {
-          setManagementStatus(result.managementStatus);
-          setStatusError(null);
-        }
-      } catch (error) {
-        console.error('Unable to refresh booking status.', error);
-        if (active) setStatusError('Booking status could not be refreshed. Please check again later.');
+        const status = await fetchBookingStatus(booking.id, booking.driverInfo.email);
+        if (!active) return;
+        setStatusError(false);
+        if (status !== booking.managementStatus) updateBooking(booking.id, { managementStatus: status, status: clientStatusFor(status) });
+      } catch {
+        if (active) setStatusError(true);
       }
     };
-
-    void refreshStatus();
-    const intervalId = window.setInterval(refreshStatus, 15000);
+    void refresh();
+    const id = window.setInterval(refresh, 15000);
     return () => {
       active = false;
-      window.clearInterval(intervalId);
+      window.clearInterval(id);
     };
-  }, [booking.driverInfo.email, booking.id, booking.managementStatus]);
+  }, [pollable, booking?.id, booking?.managementStatus]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleDownloadPass = () => {
-    setDownloaded(true);
-    setTimeout(() => setDownloaded(false), 2500);
-  };
+  if (!booking) {
+    return (
+      <>
+        <DetailHeader fallback="/bookings" title="Booking" />
+        <Container className="py-10">
+          <EmptyState
+            icon={<FileQuestion className="size-7" />}
+            title="Booking not found"
+            description="It may belong to a different device or account."
+            action={<LinkButton to="/bookings" variant="dark">View my trips</LinkButton>}
+          />
+        </Container>
+      </>
+    );
+  }
+
+  const status =
+    booking.managementStatus ?? (booking.status === 'upcoming' ? 'confirmed' : booking.status);
+  const copy = STATUS_COPY[status];
+  const StatusIcon = copy.icon;
+  const showPass = status === 'confirmed' || status === 'active';
+  const extrasTotal = booking.totalAmount + booking.discount - booking.basePrice - booking.taxAmount;
+  const lines = [
+    { label: `Rental (${bookingDurationLabel(booking)})`, amount: booking.basePrice },
+    ...(extrasTotal > 0 ? [{ label: 'Add-ons', amount: extrasTotal }] : []),
+    { label: 'Taxes & fees', amount: booking.taxAmount },
+    ...(booking.discount > 0 ? [{ label: 'Discount', amount: booking.discount, negative: true }] : [])
+  ];
 
   return (
-    <div className="min-h-screen bg-[#F9F9F9] pb-24 pt-6 px-5">
-      {/* Animated Success Badge */}
-      <div className="text-center mb-6">
-        <motion.div
-          initial={{ scale: 0, rotate: -30 }}
-          animate={{ scale: 1, rotate: 0 }}
-          transition={{ type: 'spring', damping: 12, stiffness: 200 }}
-          className="w-20 h-20 rounded-full bg-gradient-to-tr from-[#D61B04] to-[#FF4528] text-white mx-auto flex items-center justify-center shadow-xl shadow-[#D61B04]/30 mb-4"
-        >
-          <CheckCircle2 className="w-10 h-10 stroke-[2.5]" />
-        </motion.div>
+    <>
+      <DetailHeader
+        fallback="/bookings"
+        onBack={isNew ? () => navigate('/bookings', { replace: true }) : undefined}
+        eyebrow={`Booking ${booking.id}`}
+        title={booking.car.name}
+      />
 
-        <h1 className="text-2xl font-black text-[#080808] tracking-tight">
-          {managementStatus === 'pending'
-            ? 'Booking Received'
-            : managementStatus === 'cancelled'
-            ? 'Booking Cancelled'
-            : managementStatus === 'active'
-            ? 'Rental In Progress'
-            : managementStatus === 'completed'
-            ? 'Rental Completed'
-            : 'Booking Confirmed!'}
-        </h1>
-        <p className="text-xs text-[#4D5056] mt-1">
-          {managementStatus === 'pending'
-            ? 'Your reservation is awaiting staff confirmation.'
-            : managementStatus === 'cancelled'
-            ? 'This reservation was cancelled by the rental team.'
-            : 'Your reservation has been confirmed.'}
-        </p>
-        {statusError && <p role="status" className="text-[11px] text-amber-700 mt-2">{statusError}</p>}
-        <div className="inline-block mt-2 px-3 py-1 rounded-full bg-slate-200/60 font-mono text-xs font-bold text-[#080808]">
-          Reference: {booking.id}
-        </div>
-      </div>
+      <Container className="max-w-3xl pt-5 lg:pt-8">
+        {isNew && <BookingSteps current={2} />}
 
-      {/* Digital Pass / Ticket Card */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.15 }}
-        className="bg-white rounded-[32px] overflow-hidden shadow-lg border border-slate-100 mb-6"
-      >
-        {/* Car header */}
-        <div className="p-5 bg-gradient-to-r from-[#080808] to-[#1F2024] text-white">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-[10px] font-extrabold uppercase tracking-widest text-[#D61B04]">
-              {booking.car.brand} {managementStatus === 'pending' ? 'BOOKING REQUEST' : 'VIP RENTAL PASS'}
-            </span>
-            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-              managementStatus === 'pending'
-                ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
-                : managementStatus === 'cancelled'
-                ? 'bg-red-500/20 text-red-300 border-red-500/30'
-                : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
-            }`}>
-              {managementStatus === 'pending' ? 'PENDING REVIEW' : (managementStatus ?? 'confirmed').toUpperCase()}
-            </span>
-          </div>
-
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-lg font-bold leading-tight">{booking.car.name}</h3>
-              <p className="text-xs text-white/60 mt-0.5">{booking.car.transmission} · {booking.car.powerHp} HP</p>
-            </div>
-            <div className="w-20 h-14 bg-white/10 rounded-xl p-1 flex items-center justify-center flex-shrink-0">
-              <img src={booking.car.imageUrl} alt="" className="max-h-full max-w-full object-contain" />
-            </div>
-          </div>
+        {/* Status hero */}
+        <div className="mt-6 text-center">
+          <motion.div
+            initial={isNew ? { scale: 0.4, opacity: 0 } : false}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ type: 'spring', damping: 14, stiffness: 220 }}
+            className={cn('mx-auto flex size-20 items-center justify-center rounded-full bg-gradient-to-tr text-white shadow-lift', copy.tint)}
+          >
+            <StatusIcon className="size-10" />
+          </motion.div>
+          <h1 className="mt-4 text-2xl font-extrabold tracking-tight sm:text-3xl">{copy.title}</h1>
+          <p className="mx-auto mt-1 max-w-md text-[15px] text-ink-muted">{copy.body}</p>
+          {booking.id.startsWith('DEMO-') && (
+            <p className="mx-auto mt-2 max-w-md text-sm text-amber-800">Demo booking — saved on this device only.</p>
+          )}
+          {statusError && <p className="mt-2 text-sm text-amber-800">Couldn’t refresh the status. We’ll keep trying.</p>}
         </div>
 
-        {/* Pass Details */}
-        <div className="p-5 space-y-4 text-xs">
-          <div className="grid grid-cols-2 gap-3 pb-3 border-b border-slate-100">
-            <div>
-              <span className="text-[10px] uppercase font-bold text-[#B1B1B2] block">Pick-up Date</span>
-              <span className="font-extrabold text-[#080808] text-sm block mt-0.5">
-                {booking.pickupDate}
-              </span>
-              <span className="text-[11px] text-[#4D5056]">{booking.pickupTime}</span>
-            </div>
-            <div>
-              <span className="text-[10px] uppercase font-bold text-[#B1B1B2] block">Return Date</span>
-              <span className="font-extrabold text-[#080808] text-sm block mt-0.5">
-                {booking.returnDate}
-              </span>
-              <span className="text-[11px] text-[#4D5056]">{booking.returnTime}</span>
+        {/* Pass */}
+        <Card className="mt-6 overflow-hidden">
+          <div className="flex items-center gap-4 bg-ink p-5 text-white">
+            <img src={booking.car.imageUrl} alt="" className="h-16 w-24 shrink-0 rounded-xl object-cover" />
+            <div className="min-w-0">
+              <p className="text-xs font-bold uppercase tracking-wider text-white/60">{booking.car.brand}</p>
+              <p className="truncate text-lg font-bold">{booking.car.name}</p>
+              <p className="text-sm text-white/60">{bookingDurationLabel(booking)}</p>
             </div>
           </div>
 
-          <div>
-            <span className="text-[10px] uppercase font-bold text-[#B1B1B2] block">Concierge Pickup Hub</span>
-            <span className="font-bold text-[#080808] block mt-0.5">{booking.pickupLocation}</span>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3 pt-1">
+          <div className="grid grid-cols-2 gap-4 p-5 text-sm">
             <div>
-              <span className="text-[10px] uppercase font-bold text-[#B1B1B2] block">Primary Driver</span>
-              <span className="font-bold text-[#080808] block">{booking.driverInfo.fullName}</span>
+              <p className="text-xs font-bold uppercase tracking-wider text-ink-soft">Pick-up</p>
+              <p className="mt-0.5 font-bold">{formatDate(booking.pickupDate)}</p>
+              <p className="text-ink-muted">{booking.pickupTime}</p>
             </div>
             <div>
-              <span className="text-[10px] uppercase font-bold text-[#B1B1B2] block">Booking Total</span>
-              <span className="font-extrabold text-sm text-[#D61B04] block">{formatNaira(booking.totalAmount)}</span>
+              <p className="text-xs font-bold uppercase tracking-wider text-ink-soft">Return</p>
+              <p className="mt-0.5 font-bold">{formatDate(booking.returnDate)}</p>
+              <p className="text-ink-muted">{booking.returnTime}</p>
             </div>
-          </div>
-
-          {/* QR Code section */}
-          {managementStatus === 'pending' || managementStatus === 'cancelled' ? (
-            <p className="pt-4 border-t border-dashed border-slate-200 text-center text-[10px] text-[#B1B1B2]">
-              {managementStatus === 'pending'
-                ? 'A digital pass will be available after staff confirms your reservation.'
-                : 'A digital pass is unavailable for a cancelled reservation.'}
-            </p>
-          ) : (
-            <div className="pt-4 border-t border-dashed border-slate-200 text-center flex flex-col items-center">
-              <div className="p-3 bg-white border border-slate-200 rounded-2xl shadow-xs mb-2">
-                <QrCode className="w-24 h-24 text-[#080808]" />
+            <div className="col-span-2 flex gap-2">
+              <MapPin className="mt-0.5 size-4 shrink-0 text-brand" />
+              <div>
+                <p className="font-bold">{booking.pickupLocation}</p>
+                {booking.returnLocation !== booking.pickupLocation && (
+                  <p className="text-ink-muted">Return to {booking.returnLocation}</p>
+                )}
               </div>
-              <span className="font-mono text-xs font-bold text-[#080808]">{booking.digitalPassCode}</span>
-              <p className="text-[10px] text-[#B1B1B2] mt-0.5">
-                Scan at vehicle door scanner or show to concierge for contactless access
-              </p>
             </div>
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider text-ink-soft">Driver</p>
+              <p className="mt-0.5 font-bold">{booking.driverInfo.fullName}</p>
+            </div>
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider text-ink-soft">Paid with</p>
+              <p className="mt-0.5 font-bold">{booking.paymentMethod}</p>
+            </div>
+          </div>
+
+          <div className="border-t border-dashed border-line p-5">
+            {showPass ? (
+              <div className="flex flex-col items-center text-center">
+                <div className="rounded-2xl border border-line p-3">
+                  <QrCode className="size-24" aria-hidden="true" />
+                </div>
+                <p className="mt-2 font-mono text-sm font-bold">{booking.digitalPassCode}</p>
+                <p className="text-sm text-ink-soft">Show this code at the pick-up desk.</p>
+              </div>
+            ) : (
+              <p className="text-center text-sm text-ink-soft">
+                {status === 'pending'
+                  ? 'Your pick-up pass appears here once the booking is confirmed.'
+                  : 'No pick-up pass for this booking.'}
+              </p>
+            )}
+          </div>
+        </Card>
+
+        <Card className="mt-4 p-5">
+          <PriceSummary lines={lines} total={booking.totalAmount} />
+        </Card>
+
+        {/* Actions */}
+        <div className="mt-6 grid gap-3 sm:grid-cols-2">
+          {status === 'active' && (
+            <Button size="lg" className="sm:col-span-2" onClick={() => setKeyOpen(true)}>
+              <KeyRound className="size-5" /> Open digital key
+            </Button>
+          )}
+          {(status === 'pending' || status === 'confirmed') && (
+            <Button variant="dark" size="lg" onClick={() => downloadBookingCalendar(booking)}>
+              <CalendarPlus className="size-5" /> Add to calendar
+            </Button>
+          )}
+          <LinkButton to="/bookings" variant="secondary" size="lg" replace={isNew}>
+            View all trips
+          </LinkButton>
+          {(status === 'pending' || status === 'confirmed') && (
+            <Button variant="ghost" className="text-brand sm:col-span-2" onClick={() => setCancelOpen(true)}>
+              Cancel booking
+            </Button>
+          )}
+          {(status === 'completed' || status === 'cancelled') && (
+            <LinkButton to={`/cars/${booking.car.id}`} size="lg">
+              Book again
+            </LinkButton>
           )}
         </div>
+      </Container>
 
-        {/* Download Ticket Button */}
-        {managementStatus !== 'pending' && managementStatus !== 'cancelled' && (
-          <div className="p-4 bg-[#F9F9F9] border-t border-slate-100">
-            <button
-              onClick={handleDownloadPass}
-              className="w-full py-3 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-xs font-bold text-[#080808] flex items-center justify-center gap-2 transition-colors shadow-xs"
-            >
-              {downloaded ? (
-                <>
-                  <Check className="w-4 h-4 text-emerald-600" />
-                  <span className="text-emerald-700">Digital Pass Saved to Apple Wallet</span>
-                </>
-              ) : (
-                <>
-                  <Download className="w-4 h-4 text-[#D61B04]" />
-                  <span>Save Pass / Add to Wallet</span>
-                </>
-              )}
-            </button>
-          </div>
-        )}
-      </motion.div>
-
-      {/* Navigation CTAs */}
-      <div className="space-y-3">
-        <button
-          onClick={onGoToBookings}
-          className="w-full py-4 rounded-2xl bg-[#D61B04] hover:bg-[#B01402] text-white text-sm font-extrabold shadow-lg shadow-[#D61B04]/30 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
-        >
-          <span>View in My Bookings</span>
-          <ArrowRight className="w-4 h-4" />
-        </button>
-
-        <button
-          onClick={onGoHome}
-          className="w-full py-3.5 rounded-2xl bg-white hover:bg-slate-50 border border-slate-200 text-xs font-bold text-[#080808] transition-colors"
-        >
-          Back to Fleet & Home
-        </button>
-      </div>
-    </div>
+      <CancelBookingSheet booking={cancelOpen ? booking : null} onClose={() => setCancelOpen(false)} />
+      <DigitalKeyModal booking={keyOpen ? booking : null} onClose={() => setKeyOpen(false)} />
+    </>
   );
 };

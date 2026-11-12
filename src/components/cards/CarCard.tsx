@@ -1,174 +1,121 @@
 import React from 'react';
-import { motion } from 'motion/react';
-import { Heart, ArrowRight, Gauge, Zap, Users, Shield } from 'lucide-react';
-import { Car } from '../../types/car';
+import { Link } from 'react-router-dom';
+import { ArrowRight, Fuel, Gauge, Heart, Star, Users } from 'lucide-react';
+import type { Car } from '../../types/car';
+import { useAppState } from '../../state/AppState';
 import { formatNaira } from '../../utils/currency';
+import { cn } from '../ui/Button';
 
 interface CarCardProps {
   car: Car;
-  isFavorite: boolean;
-  onToggleFavorite: (carId: string) => void;
-  onSelect: (car: Car) => void;
-  layout?: 'compact' | 'standard' | 'horizontal';
+  layout?: 'standard' | 'horizontal';
 }
 
-export const CarCard: React.FC<CarCardProps> = ({
-  car,
-  isFavorite,
-  onToggleFavorite,
-  onSelect,
-  layout = 'standard'
-}) => {
-  const handleFavoriteClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    onToggleFavorite(car.id);
-  };
+const FavoriteButton: React.FC<{ car: Car; className?: string }> = ({ car, className }) => {
+  const { favorites, toggleFavorite } = useAppState();
+  const saved = favorites.includes(car.id);
+  return (
+    <button
+      type="button"
+      onClick={() => toggleFavorite(car.id)}
+      aria-pressed={saved}
+      aria-label={saved ? `Remove ${car.name} from saved` : `Save ${car.name}`}
+      className={cn(
+        'z-10 flex size-11 items-center justify-center rounded-full bg-white/90 shadow-sm backdrop-blur transition-colors hover:bg-brand-soft active:scale-90',
+        className
+      )}
+    >
+      <Heart className={cn('size-[18px] transition-colors', saved ? 'fill-brand text-brand' : 'text-ink-soft')} />
+    </button>
+  );
+};
 
+export const CarCard: React.FC<CarCardProps> = ({ car, layout = 'standard' }) => {
   if (layout === 'horizontal') {
     return (
-      <motion.div
-        whileHover={{ y: -3 }}
-        whileTap={{ scale: 0.99 }}
-        onClick={() => onSelect(car)}
-        className="cursor-pointer bg-white rounded-3xl p-4 shadow-sm border border-slate-100 hover:shadow-md transition-all flex gap-4 items-center"
-      >
-        <div className="relative w-32 h-24 rounded-2xl bg-[#F9F9F9] overflow-hidden flex-shrink-0 flex items-center justify-center p-2">
-          <img
-            src={car.imageUrl}
-            alt={car.name}
-            className="w-full h-full object-contain"
-            loading="lazy"
-          />
-        </div>
-
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-semibold text-[#B1B1B2] uppercase tracking-wider">
-              {car.brand}
-            </span>
-            <button
-              onClick={handleFavoriteClick}
-              className="p-1.5 text-slate-400 hover:text-[#D61B04] transition-colors"
-            >
-              <Heart
-                className={`w-4 h-4 ${isFavorite ? 'fill-[#D61B04] text-[#D61B04]' : ''}`}
-              />
-            </button>
+      <article className="relative">
+        <Link
+          to={`/cars/${car.id}`}
+          className="flex items-center gap-4 rounded-3xl border border-line/80 bg-white p-3 pr-14 shadow-card transition-shadow hover:shadow-lift sm:p-4 sm:pr-16"
+        >
+          <div className="flex h-20 w-28 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-surface sm:h-24 sm:w-36">
+            <img src={car.imageUrl} alt="" className="size-full object-cover" loading="lazy" />
           </div>
-          <h4 className="text-sm font-bold text-[#080808] truncate">{car.name}</h4>
-
-          <div className="flex items-center gap-2 mt-1 text-[11px] text-[#4D5056]">
-            <span>{car.transmission}</span>
-            <span>·</span>
-            <span>{car.powerHp} HP</span>
-            <span>·</span>
-            <span>{car.seats} Seats</span>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-semibold uppercase tracking-wider text-ink-soft">{car.brand}</p>
+            <h3 className="truncate text-base font-bold">{car.name}</h3>
+            <p className="mt-0.5 truncate text-sm text-ink-muted">
+              {car.transmission} · {car.seats} seats · {car.powerHp} hp
+            </p>
+            <p className="mt-1.5 text-sm">
+              <span className="font-extrabold">{formatNaira(car.pricePerDay)}</span>
+              <span className="text-ink-soft"> /day</span>
+            </p>
           </div>
-
-          <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-100">
-            <div className="flex items-baseline gap-1">
-              <span className="text-sm font-bold text-[#080808]">{formatNaira(car.pricePerDay)}</span>
-              <span className="text-[11px] text-[#B1B1B2]">/day</span>
-            </div>
-            <span className="text-xs font-bold text-[#D61B04] flex items-center gap-1 group-hover:translate-x-0.5 transition-transform">
-              View <ArrowRight className="w-3.5 h-3.5" />
-            </span>
-          </div>
-        </div>
-      </motion.div>
+        </Link>
+        <FavoriteButton car={car} className="absolute right-2 top-2 sm:right-3 sm:top-3" />
+      </article>
     );
   }
 
   return (
-    <motion.div
-      whileHover={{ y: -4 }}
-      whileTap={{ scale: 0.98 }}
-      onClick={() => onSelect(car)}
-      className="group cursor-pointer bg-white rounded-[28px] p-5 shadow-[0_4px_20px_rgba(0,0,0,0.03)] border border-slate-100/80 hover:shadow-[0_12px_32px_rgba(0,0,0,0.08)] transition-all flex flex-col justify-between"
-    >
-      {/* Card Header: Brand, Title, Favorite Heart */}
-      <div>
-        <div className="flex items-start justify-between">
-          <div>
-            <span className="text-[11px] font-bold text-[#B1B1B2] uppercase tracking-wider block">
-              {car.brand}
-            </span>
-            <h3 className="text-base font-bold text-[#080808] tracking-tight mt-0.5 line-clamp-1">
-              {car.name}
-            </h3>
-          </div>
-          <button
-            onClick={handleFavoriteClick}
-            aria-label="Save to favorites"
-            className="w-9 h-9 rounded-full bg-[#F9F9F9] flex items-center justify-center text-slate-400 hover:text-[#D61B04] hover:bg-red-50 transition-colors"
-          >
-            <motion.div whileTap={{ scale: 1.3 }}>
-              <Heart
-                className={`w-4 h-4 transition-colors ${
-                  isFavorite ? 'fill-[#D61B04] text-[#D61B04]' : 'text-slate-400'
-                }`}
-              />
-            </motion.div>
-          </button>
-        </div>
-
-        {/* Category tag */}
-        <div className="mt-1 flex items-center gap-2">
-          <span className="text-xs text-[#4D5056] font-medium">{car.category}</span>
-          <span className="text-[#B1B1B2]">·</span>
-          <span className="text-xs text-amber-500 font-bold flex items-center gap-1">
-            ★ {car.rating}
+    <article className="group relative">
+      <Link
+        to={`/cars/${car.id}`}
+        className="flex h-full flex-col overflow-hidden rounded-[28px] border border-line/80 bg-white shadow-card transition-[box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:shadow-lift"
+      >
+        <div className="relative aspect-[16/10] overflow-hidden bg-surface">
+          <img
+            src={car.imageUrl}
+            alt=""
+            loading="lazy"
+            className="size-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.03]"
+          />
+          <span className="absolute left-3 top-3 rounded-full bg-white/90 px-2.5 py-1 text-xs font-bold backdrop-blur">
+            {car.category}
           </span>
         </div>
-      </div>
 
-      {/* Vehicle Studio Image */}
-      <div className="relative my-4 h-36 sm:h-40 rounded-2xl bg-gradient-to-b from-[#F9F9F9]/80 to-[#F4F4F6]/50 flex items-center justify-center p-3 overflow-hidden">
-        <motion.img
-          src={car.imageUrl}
-          alt={car.name}
-          className="max-h-full max-w-full object-contain filter drop-shadow-sm group-hover:scale-105 transition-transform duration-500 ease-out"
-          loading="lazy"
-        />
-      </div>
+        <div className="flex flex-1 flex-col p-4 sm:p-5">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <p className="text-xs font-semibold uppercase tracking-wider text-ink-soft">{car.brand}</p>
+              <h3 className="truncate text-lg font-bold leading-snug">{car.name}</h3>
+            </div>
+            <span className="mt-1 inline-flex shrink-0 items-center gap-1 text-sm font-bold">
+              <Star className="size-4 fill-amber-400 text-amber-400" />
+              {car.rating.toFixed(1)}
+            </span>
+          </div>
 
-      {/* Quick Specs Strip */}
-      <div className="grid grid-cols-3 gap-2 py-2.5 px-3 rounded-2xl bg-[#F9F9F9] mb-4 text-center">
-        <div>
-          <span className="text-[10px] text-[#B1B1B2] block uppercase tracking-wider">Power</span>
-          <span className="text-xs font-bold text-[#080808]">{car.powerHp} HP</span>
-        </div>
-        <div className="border-x border-slate-200/60">
-          <span className="text-[10px] text-[#B1B1B2] block uppercase tracking-wider">0-100</span>
-          <span className="text-xs font-bold text-[#080808]">{car.acceleration0to100}s</span>
-        </div>
-        <div>
-          <span className="text-[10px] text-[#B1B1B2] block uppercase tracking-wider">Type</span>
-          <span className="text-xs font-bold text-[#080808]">{car.transmission === 'Automatic' ? 'Auto' : 'Manual'}</span>
-        </div>
-      </div>
+          <ul className="mb-4 mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm text-ink-muted">
+            <li className="inline-flex items-center gap-1.5">
+              <Gauge className="size-4 text-ink-soft" /> {car.powerHp} hp
+            </li>
+            <li className="inline-flex items-center gap-1.5">
+              <Users className="size-4 text-ink-soft" /> {car.seats} seats
+            </li>
+            <li className="inline-flex items-center gap-1.5">
+              <Fuel className="size-4 text-ink-soft" /> {car.fuelType}
+            </li>
+          </ul>
 
-      {/* Price & Book CTA */}
-      <div className="flex items-center justify-between pt-1">
-        <div>
-          <span className="text-[11px] text-[#B1B1B2] block">Price</span>
-          <div className="flex items-baseline gap-1">
-            <span className="text-base font-extrabold text-[#080808]">{formatNaira(car.pricePerDay)}</span>
-            <span className="text-xs text-[#B1B1B2] font-normal">/day</span>
+          <div className="mt-auto flex items-end justify-between gap-3 border-t border-line pt-4">
+            <div>
+              <p className="text-lg font-extrabold leading-none">
+                {formatNaira(car.pricePerDay)}
+                <span className="text-sm font-medium text-ink-soft"> /day</span>
+              </p>
+              <p className="mt-1 text-xs text-ink-soft">or {formatNaira(car.pricePerHour)} /hour</p>
+            </div>
+            <span className="inline-flex min-h-11 items-center gap-1.5 rounded-xl bg-ink px-4 text-sm font-bold text-white transition-colors group-hover:bg-brand">
+              Rent
+              <ArrowRight className="size-4" />
+            </span>
           </div>
         </div>
-
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onSelect(car);
-          }}
-          className="h-10 px-4 rounded-xl bg-[#080808] hover:bg-[#D61B04] text-white text-xs font-bold flex items-center gap-1.5 transition-colors shadow-sm"
-        >
-          <span>Rent Now</span>
-          <ArrowRight className="w-3.5 h-3.5" />
-        </button>
-      </div>
-    </motion.div>
+      </Link>
+      <FavoriteButton car={car} className="absolute right-3 top-3" />
+    </article>
   );
 };

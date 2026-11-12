@@ -1,41 +1,131 @@
 @import "tailwindcss";
 
 @theme {
-  --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
-  --color-brand-bg: #F9F9F9;
-  --color-brand-black: #080808;
+  --font-sans: 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, sans-serif;
+
+  /* Brand */
+  --color-brand: #D61B04;
+  --color-brand-dark: #B01402;
+  --color-brand-soft: #FDEDEB;
+
+  /* Text — ink-soft replaces #B1B1B2 for readable secondary text (≈4.9:1 on white) */
+  --color-ink: #080808;
+  --color-ink-muted: #4D5056;
+  --color-ink-soft: #6B6E75;
+  --color-ink-faint: #B1B1B2;
+
+  /* Surfaces */
+  --color-surface: #F7F7F8;
+  --color-surface-2: #EFEFF2;
+  --color-line: #E6E6EA;
+
+  /* Legacy aliases kept for any external references */
   --color-brand-red: #D61B04;
+  --color-brand-black: #080808;
   --color-brand-grey: #B1B1B2;
   --color-brand-darkgrey: #4D5056;
-  --color-brand-green: #617D76;
-  --color-brand-warm: #CA6247;
+  --color-brand-bg: #F7F7F8;
+
+  --shadow-card: 0 1px 2px rgb(8 8 8 / 0.04), 0 4px 16px rgb(8 8 8 / 0.04);
+  --shadow-lift: 0 8px 28px rgb(8 8 8 / 0.10);
 }
 
-:root {
-  --app-bg: #F9F9F9;
-  --app-black: #080808;
-  --app-red: #D61B04;
-  --app-grey: #B1B1B2;
-  --app-darkgrey: #4D5056;
-  --app-green: #617D76;
-  --app-warm: #CA6247;
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--color-surface);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  ::selection {
+    background: var(--color-brand);
+    color: white;
+  }
+
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Tailwind v4 dropped the pointer cursor on buttons */
+  button:not(:disabled),
+  [role='button']:not([aria-disabled='true']),
+  label[for],
+  select {
+    cursor: pointer;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-brand);
+    outline-offset: 2px;
+  }
+
+  input[type='date']::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+    opacity: 0.6;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
 }
 
-/* Custom scrollbar styling for horizontal car lists */
-.no-scrollbar::-webkit-scrollbar {
-  display: none;
-}
-.no-scrollbar {
-  -ms-overflow-style: none;
+@utility no-scrollbar {
   scrollbar-width: none;
+  -ms-overflow-style: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
 }
 
-body {
-  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
-  background-color: #0E0F12;
+/* Safe-area helpers for notched phones (requires viewport-fit=cover) */
+@utility pb-safe {
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+}
+@utility pt-safe {
+  padding-top: env(safe-area-inset-top);
 }
 
-/* Prevent unwanted callout on mobile taps */
-* {
-  -webkit-tap-highlight-color: transparent;
+/* Form controls: 16px on phones prevents iOS zoom-on-focus */
+@utility field {
+  width: 100%;
+  min-height: 3rem;
+  border-radius: 0.875rem;
+  border: 1px solid var(--color-line);
+  background: white;
+  padding: 0.625rem 0.875rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-ink);
+  transition: border-color 150ms, box-shadow 150ms;
+  &::placeholder {
+    color: var(--color-ink-faint);
+    font-weight: 500;
+  }
+  &:focus {
+    outline: none;
+    border-color: var(--color-brand);
+    box-shadow: 0 0 0 3px rgb(214 27 4 / 0.15);
+  }
+  &[aria-invalid='true'] {
+    border-color: var(--color-brand);
+  }
+  @media (width >= 40rem) {
+    font-size: 0.875rem;
+  }
 }
