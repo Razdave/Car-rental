@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { CalendarPlus, CheckCircle2, Clock, FileQuestion, KeyRound, MapPin, QrCode, XCircle } from 'lucide-react';
+import { CalendarPlus, CheckCircle2, ChevronRight, Clock, CreditCard, FileQuestion, FileSignature, KeyRound, Loader2, MapPin, MessageSquare, QrCode, ShieldCheck, XCircle } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { useAppState } from '../../state/AppState';
-import { clientStatusFor, fetchBookingStatus } from '../../lib/api';
+import { backend } from '../../lib/backend';
 import { downloadBookingCalendar } from '../../lib/calendar';
 import { formatDate } from '../../lib/dates';
 import { bookingDurationLabel } from '../../lib/pricing';
@@ -11,8 +12,17 @@ import { formatNaira } from '../../utils/currency';
 import { BookingSteps, PriceSummary } from '../booking/BookingParts';
 import { CancelBookingSheet } from '../booking/BookingSheets';
 import { DigitalKeyModal } from '../modals/DigitalKeyModal';
+import { ReviewForm } from '../cars/ReviewForm';
 import { Button, cn, LinkButton } from '../ui/Button';
 import { Card, Container, DetailHeader, EmptyState } from '../ui/Layout';
+
+const PAYMENT_COPY = {
+  unpaid: 'Awaiting payment',
+  authorized: 'Card authorised — charged at pick-up',
+  paid: 'Paid in full',
+  refunded: 'Refunded to your original payment method',
+  failed: 'Payment failed — please try again or contact us'
+} as const;
 
 const STATUS_COPY = {
   pending: { title: 'Booking received', body: 'Our team is confirming availability — usually within an hour.', icon: Clock, tint: 'from-amber-500 to-amber-400' },
@@ -26,24 +36,45 @@ export const ConfirmationScreen: React.FC = () => {
   const { bookingId } = useParams();
   const [params] = useSearchParams();
   const navigate = useNavigate();
-  const { bookings, updateBooking } = useAppState();
+  const { bookings, upsertBooking, refreshBookings, authReady, showToast } = useAppState();
+  const [depositBusy, setDepositBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [verifying, setVerifying] = useState(false);
   const booking = bookings.find((b) => b.id === bookingId);
   const isNew = params.get('new') === '1';
   const [statusError, setStatusError] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [keyOpen, setKeyOpen] = useState(false);
 
-  // Poll the API for staff status changes (skipped for device-only demo bookings and seed data).
-  const pollable = booking && booking.managementStatus && !booking.id.startsWith('DEMO-') && booking.status !== 'cancelled';
+  // Make sure we have the latest copy (e.g. returning from Paystack or opening a shared link).
+  useEffect(() => {
+    if (!authReady) return;
+    void refreshBookings().finally(() => setLoading(false));
+  }, [authReady, bookingId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Paystack redirects back with ?reference=… — confirm the charge server-side.
+  const reference = params.get('reference') ?? params.get('trxref');
+  useEffect(() => {
+    if (!reference) return;
+    setVerifying(true);
+    backend
+      .verifyPayment(reference)
+      .then(() => refreshBookings())
+      .catch(() => setStatusError(true))
+      .finally(() => setVerifying(false));
+  }, [reference]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Local mode: poll the Express API for staff status changes. Supabase pushes changes via Realtime.
+  const pollable = backend.kind === 'local' && booking && booking.managementStatus && !booking.id.startsWith('DEMO-') && booking.status !== 'cancelled';
   useEffect(() => {
     if (!pollable || !booking) return;
     let active = true;
     const refresh = async () => {
       try {
-        const status = await fetchBookingStatus(booking.id, booking.driverInfo.email);
+        const updated = await backend.refreshBooking(booking);
         if (!active) return;
         setStatusError(false);
-        if (status !== booking.managementStatus) updateBooking(booking.id, { managementStatus: status, status: clientStatusFor(status) });
+        if (updated) upsertBooking(updated);
       } catch {
         if (active) setStatusError(true);
       }
@@ -61,12 +92,16 @@ export const ConfirmationScreen: React.FC = () => {
       <>
         <DetailHeader fallback="/bookings" title="Booking" />
         <Container className="py-10">
+          {loading || !authReady ? (
+            <div className="flex justify-center py-16 text-ink-soft"><Loader2 className="size-8 animate-spin" /></div>
+          ) : (
           <EmptyState
             icon={<FileQuestion className="size-7" />}
             title="Booking not found"
             description="It may belong to a different device or account."
             action={<LinkButton to="/bookings" variant="dark">View my trips</LinkButton>}
           />
+          )}
         </Container>
       </>
     );
@@ -173,6 +208,89 @@ export const ConfirmationScreen: React.FC = () => {
               </p>
             )}
           </div>
+        </Card>
+
+        {status === 'completed' && <ReviewForm booking={booking} />}
+
+        {/* Payment, agreement, messages */}
+        <Card className="mt-4 divide-y divide-line overflow-hidden">
+          <div className="flex min-h-16 items-center gap-3 p-4">
+            <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-surface-2"><CreditCard className="size-5" /></span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-bold">Payment</span>
+              <span className="block text-sm text-ink-soft">
+                {verifying ? 'Confirming with Paystack…' : PAYMENT_COPY[booking.paymentStatus ?? 'paid']}
+              </span>
+            </span>
+            <span className={cn('rounded-full px-2.5 py-1 text-xs font-bold', booking.paymentStatus === 'unpaid' || booking.paymentStatus === 'failed' ? 'bg-amber-50 text-amber-800' : 'bg-emerald-50 text-emerald-700')}>
+              {(booking.paymentStatus ?? 'paid').replace(/^./, (c) => c.toUpperCase())}
+            </span>
+          </div>
+          {(booking.depositAmount ?? 0) > 0 && (
+            <div className="flex min-h-16 flex-wrap items-center gap-3 p-4">
+              <span className={cn('flex size-11 shrink-0 items-center justify-center rounded-xl', booking.depositStatus === 'pending' ? 'bg-brand-soft text-brand' : 'bg-surface-2')}>
+                <ShieldCheck className="size-5" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-bold">Security deposit {formatNaira(booking.depositAmount ?? 0)}</span>
+                <span className="block text-sm text-ink-soft">
+                  {{
+                    none: 'No deposit needed',
+                    pending: 'Required before pick-up — refunded after the car is returned and checked',
+                    held: 'Held — released after the car is returned and checked',
+                    released: 'Released in full — refunds can take 3–5 working days to appear',
+                    captured: `${formatNaira(booking.depositCaptured ?? 0)} kept: ${booking.depositNote ?? 'see your messages'}. The rest was refunded.`
+                  }[booking.depositStatus ?? 'none']}
+                </span>
+              </span>
+              {booking.depositStatus === 'pending' && status !== 'cancelled' && (
+                <Button
+                  size="sm"
+                  disabled={depositBusy}
+                  onClick={async () => {
+                    setDepositBusy(true);
+                    try {
+                      const res = await backend.startDeposit(booking.id, `${window.location.origin}/bookings/${booking.id}`);
+                      if (res.redirectUrl) return window.location.assign(res.redirectUrl);
+                      if (res.booking) upsertBooking(res.booking);
+                      showToast('Deposit received — thank you', 'success');
+                    } catch (e) {
+                      showToast(e instanceof Error ? e.message : 'Could not take the deposit', 'error');
+                    } finally {
+                      setDepositBusy(false);
+                    }
+                  }}
+                >
+                  {depositBusy && <Loader2 className="size-4 animate-spin" />} Pay deposit
+                </Button>
+              )}
+            </div>
+          )}
+          {status !== 'cancelled' && (
+            <Link to={`/bookings/${booking.id}/agreement`} className="flex min-h-16 items-center gap-3 p-4 hover:bg-surface">
+              <span className={cn('flex size-11 shrink-0 items-center justify-center rounded-xl', booking.agreement ? 'bg-emerald-50 text-emerald-700' : 'bg-brand-soft text-brand')}>
+                <FileSignature className="size-5" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-bold">Rental agreement</span>
+                <span className="block text-sm text-ink-soft">
+                  {booking.agreement
+                    ? `Signed by ${booking.agreement.signedName} on ${new Date(booking.agreement.signedAt).toLocaleDateString('en-GB')}`
+                    : 'Sign before pick-up — it takes a minute'}
+                </span>
+              </span>
+              {!booking.agreement && <span className="rounded-full bg-brand px-2.5 py-1 text-xs font-bold text-white">Sign now</span>}
+              <ChevronRight className="size-5 shrink-0 text-ink-faint" />
+            </Link>
+          )}
+          <Link to={`/messages?booking=${booking.id}`} className="flex min-h-16 items-center gap-3 p-4 hover:bg-surface">
+            <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-surface-2"><MessageSquare className="size-5" /></span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-bold">Message the rental team</span>
+              <span className="block text-sm text-ink-soft">Questions about delivery, timing or the car</span>
+            </span>
+            <ChevronRight className="size-5 shrink-0 text-ink-faint" />
+          </Link>
         </Card>
 
         <Card className="mt-4 p-5">

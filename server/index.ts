@@ -128,9 +128,9 @@ const publicStaff = (row: {
   createdAt: row.created_at
 });
 
-const allowedCategories = ['Sports', 'SUV', 'Electric', 'Luxury', 'Sedan'] as const;
+const allowedCategories = ['Sports', 'SUV', 'Luxury', 'Sedan'] as const;
 const allowedTransmissions = ['Automatic', 'Manual'] as const;
-const allowedFuelTypes = ['Petrol', 'Electric', 'Hybrid', 'Diesel'] as const;
+const allowedFuelTypes = ['Petrol', 'Hybrid', 'Diesel'] as const;
 
 function parseCar(input: Record<string, unknown>, id: string, current?: Car): Car {
   const merged: Record<string, unknown> = { ...(current ?? {}), ...input };

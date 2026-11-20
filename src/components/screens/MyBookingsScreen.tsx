@@ -123,9 +123,15 @@ export const MyBookingsScreen: React.FC = () => {
                       <Button size="sm" onClick={() => setKeyFor(b)} className="flex-1 sm:flex-none">
                         <KeyRound className="size-4" /> Digital key
                       </Button>
-                      <Button size="sm" variant="secondary" onClick={() => setExtendFor(b)} className="flex-1 sm:flex-none">
-                        Extend trip
-                      </Button>
+                      {b.packageId ? (
+                        <LinkButton to={`/messages?booking=${b.id}`} size="sm" variant="secondary" className="flex-1 sm:flex-none">
+                          Need more time?
+                        </LinkButton>
+                      ) : (
+                        <Button size="sm" variant="secondary" onClick={() => setExtendFor(b)} className="flex-1 sm:flex-none">
+                          Extend trip
+                        </Button>
+                      )}
                     </>
                   )}
                   {b.status === 'upcoming' && (
@@ -139,8 +145,18 @@ export const MyBookingsScreen: React.FC = () => {
                     </>
                   )}
                   {b.status === 'completed' && (
-                    <LinkButton to={`/cars/${b.car.id}`} size="sm" variant="dark" className="flex-1 sm:flex-none">
-                      Book again
+                    <>
+                      <LinkButton to={`/cars/${b.car.id}`} size="sm" variant="dark" className="flex-1 sm:flex-none">
+                        Book again
+                      </LinkButton>
+                      <LinkButton to={`/bookings/${b.id}`} size="sm" variant="secondary" className="flex-1 sm:flex-none">
+                        Leave a review
+                      </LinkButton>
+                    </>
+                  )}
+                  {(b.status === 'upcoming' || b.status === 'active') && !b.agreement && (
+                    <LinkButton to={`/bookings/${b.id}/agreement`} size="sm" variant="secondary" className="flex-1 sm:flex-none">
+                      Sign agreement
                     </LinkButton>
                   )}
                 </div>

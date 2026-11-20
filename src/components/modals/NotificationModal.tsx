@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { BellOff, CalendarClock, ChevronRight, Gift, Hourglass, KeyRound } from 'lucide-react';
+import { BellOff, CalendarClock, ChevronRight, Gift, Hourglass, KeyRound, ShieldAlert } from 'lucide-react';
 import { useAppState } from '../../state/AppState';
 import { formatDate } from '../../lib/dates';
 import { cn } from '../ui/Button';
@@ -17,10 +17,30 @@ export interface AppNotification {
 
 /** Notifications are derived from real booking state rather than a hard-coded list. */
 export function useNotifications(): AppNotification[] {
-  const { bookings } = useAppState();
+  const { bookings, verification } = useAppState();
   return useMemo(() => {
     const items: AppNotification[] = [];
+    if (verification && ['unverified', 'rejected', 'expired'].includes(verification.status)) {
+      items.push({
+        id: `verify-${verification.status}`,
+        title: verification.status === 'unverified' ? 'Verify your identity' : 'Verification needs attention',
+        message: 'Required before we can confirm your booking.',
+        icon: ShieldAlert,
+        tint: 'bg-amber-50 text-amber-700',
+        to: '/verify'
+      });
+    }
     for (const b of bookings) {
+      if (b.depositStatus === 'pending' && b.status === 'upcoming') {
+        items.push({
+          id: `${b.id}-deposit`,
+          title: 'Security deposit due',
+          message: `Pay the refundable deposit for your ${b.car.name} before pick-up.`,
+          icon: ShieldAlert,
+          tint: 'bg-brand-soft text-brand',
+          to: `/bookings/${b.id}`
+        });
+      }
       if (b.status === 'active') {
         items.push({
           id: `${b.id}-active`,
@@ -59,7 +79,7 @@ export function useNotifications(): AppNotification[] {
       to: '/explore'
     });
     return items;
-  }, [bookings]);
+  }, [bookings, verification]);
 }
 
 export const NotificationModal: React.FC<{ notifications: AppNotification[] }> = ({ notifications }) => {

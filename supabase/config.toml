@@ -1,0 +1,23 @@
+# Supabase CLI config (local development). `supabase start` fills in defaults for anything not listed.
+project_id = "aurevon"
+
+[db.seed]
+enabled = true
+sql_paths = ["./seed.sql"]
+
+[auth]
+site_url = "http://localhost:3000"
+additional_redirect_urls = ["http://localhost:3000"]
+
+[auth.email]
+enable_signup = true
+# The sign-in screen asks for a 6-digit code: include {{ .Token }} in the magic-link email template.
+otp_length = 6
+otp_expiry = 600
+
+# Called by Paystack and pg_cron, which don't send a user JWT; both check their own secrets.
+[functions.payments-webhook]
+verify_jwt = false
+
+[functions.send-notification]
+verify_jwt = false

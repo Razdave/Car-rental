@@ -1,7 +1,19 @@
 # Backend plan: moving to Supabase
 
-Status: **proposal**, nothing below is implemented yet. The web app is ready for it: every network call goes through
-[`src/lib/api.ts`](../src/lib/api.ts), and server-side pricing rules are mirrored in [`src/lib/pricing.ts`](../src/lib/pricing.ts).
+Status: **implemented** in `supabase/` (migrations, functions, seed) and wired into the app through
+[`src/lib/backend/`](../src/lib/backend/). Setup steps: [SUPABASE_SETUP.md](SUPABASE_SETUP.md). The sections below are the original design notes.
+
+## 0. Requirements coverage
+
+The rental management system must support the five capabilities below.
+
+| Requirement | Today | With this plan |
+| --- | --- | --- |
+| **Online bookings** | Customer flow built end to end (search → car → trip details → checkout → confirmation). Saved by the Express API, or on the device when it's offline. | `create_booking` RPC prices the booking on the server; the `no_overlap` constraint blocks double-bookings (§2, §4). |
+| **Payment processing** | Demo checkout only — no money is taken. | Paystack via `payments-init` + `payments-webhook` Edge Functions; unpaid bookings auto-expire (§5). |
+| **Fleet availability tracking** | `is_available` flag and an overlap check in the Express API; GPS webhook stores positions. No staff UI. | Availability = `is_available` **and** no overlapping open booking, queried by date range; Realtime updates; staff dashboard with fleet calendar and GPS map (§2, §9, §12). |
+| **Automated confirmations** | None — the app only polls status. | Email + SMS on every booking status change and payment, plus pick-up/return reminders (§11). |
+| **Customer data management** | Profile kept in the browser only. | `profiles` with Supabase Auth, licence upload and verification, booking history, staff customer view, data export/deletion (§3, §6, §13). |
 
 ## 1. What we're replacing
 
@@ -229,12 +241,82 @@ image upload, staff management, and a map of `car_positions`.
 2. Implement `create_booking`, `set_booking_status`, `cancel_booking` + tests.
 3. Swap `src/lib/api.ts` reads (cars) → then writes (bookings) → then auth/profile/favorites.
 4. Paystack Edge Functions in test mode.
-5. Staff dashboard.
-6. Port the GPS webhook to an Edge Function; retire `server/`.
+5. Automated confirmations (§11).
+6. Staff dashboard, including fleet calendar and customer view.
+7. Port the GPS webhook to an Edge Function; retire `server/`.
+
+## 11. Automated confirmations
+
+Every customer-facing event sends a message without staff doing anything.
+
+**Mechanism:** an `after insert or update of status, payment_status` trigger on `bookings` inserts a row into a
+`notifications_outbox` table. A Database Webhook calls the `send-notification` Edge Function, which renders the
+template, sends it and marks the row `sent` (or `failed`, with retries). The outbox gives a delivery log and stops
+duplicates if a webhook fires twice.
+
+```sql
+create table notifications_outbox (
+  id bigint generated always as identity primary key,
+  booking_id text references bookings on delete cascade,
+  event text not null,          -- 'booking.received', 'booking.confirmed', ...
+  channel text not null check (channel in ('email','sms')),
+  recipient text not null,
+  status text not null default 'queued' check (status in ('queued','sent','failed')),
+  attempts int not null default 0,
+  last_error text,
+  created_at timestamptz not null default now(),
+  sent_at timestamptz,
+  unique (booking_id, event, channel)
+);
+```
+
+| Event | When | Email | SMS |
+| --- | --- | --- | --- |
+| Booking received | `create_booking` | ✓ summary + "awaiting confirmation" | — |
+| Payment received | `payment_status → paid` | ✓ receipt | — |
+| Payment failed / booking expired | webhook / `pg_cron` expiry | ✓ | ✓ |
+| Booking confirmed | `pending → confirmed` | ✓ pass code + `.ics` attachment | ✓ |
+| Pick-up reminder | 24 h and 2 h before `pickup_at` (`pg_cron` every 15 min) | ✓ | ✓ |
+| Trip started | `confirmed → active` | ✓ return time + roadside number | — |
+| Return reminder | 2 h before `return_at` | — | ✓ |
+| Trip completed | `active → completed` | ✓ final receipt + review link | — |
+| Cancelled / refunded | `→ cancelled`, refund webhook | ✓ | ✓ |
+| Staff alert | new booking, payment failed | ✓ to the ops inbox | — |
+
+**Providers (to confirm):** Resend or Postmark for email; Termii (Nigeria) or Twilio for SMS. WhatsApp Business can
+be added later as a channel. Customers can opt out of SMS reminders in their profile (`profiles.sms_opt_in`), but
+not out of transactional emails.
+
+In the app, Realtime pushes the same status changes to the open Trips and booking-detail pages, replacing the
+current 15-second poll.
+
+## 12. Fleet availability tracking
+
+- **Bookable** = `cars.is_available` (staff can take a car out of service) **and** no open booking overlapping the
+  requested window. Expose this as `available_cars(pickup_at, return_at, location_id)` so the Explore page shows only
+  cars that are actually free for the searched dates.
+- **Maintenance blocks:** a `car_blocks (car_id, starts_at, ends_at, reason)` table for servicing and cleaning
+  between rentals, included in the same overlap check. Optionally add an automatic buffer (for example 2 hours) after
+  every return.
+- **Staff views:** a fleet calendar (cars × days, showing bookings and blocks), today's pick-ups and returns, and a
+  map of the latest `car_positions`.
+- **Utilisation report:** booked hours ÷ available hours per car per month, from a SQL view.
+
+## 13. Customer data management
+
+- **Profile:** name, phone, email (from Auth), licence number and expiry, licence photo in the private `licences`
+  bucket, verification status set by staff.
+- **Staff customer view:** search by name, email, phone or booking ID; see bookings, payments, notes and flags
+  (`customer_notes`, `blocked_at`) — managers and admins only.
+- **History:** customers see all past bookings and receipts; nothing is deleted when a booking ends.
+- **Privacy (Nigeria Data Protection Act 2023, or the rules of the chosen market):** consent at sign-up,
+  self-service data export, and account deletion that anonymises personal data but keeps booking and payment records
+  required for accounting. Licence images are deleted after an agreed retention period.
+- **Access logging:** staff viewing licence documents is written to `audit_log`.
 
 ## Open questions
 
-- **Market**: prices are in ₦ but locations, phone formats, miles and the support number are US (Los Angeles). Which market is this for? It changes payment provider, licence format, tax rate and units.
+- **Market**: Nigeria — hubs in Calabar (default) and Lagos, prices in ₦, Lagos time. Still US in the demo data: the sample customer's phone number, the roadside-assistance number and mileage limits in miles.
 - **Payment timing**: charge in full at booking, take a deposit, or pay at pick-up?
 - **Cancellation**: is "free up to 24h before pick-up" the real policy, and what happens inside 24h?
 - **Extensions**: should extending a trip need staff approval and an extra payment? Today it only changes the local copy.

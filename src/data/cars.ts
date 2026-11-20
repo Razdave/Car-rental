@@ -1,6 +1,13 @@
-import { Car, ExtraService, Booking } from '../types/car';
+import { Car, ExtraService, Booking, RatePackage } from '../types/car';
 
-export const CARS_DATA: Car[] = [
+export const DEFAULT_RENTAL_RULES = [
+  'Minimum driver age 25',
+  'Valid driving licence required at pick-up',
+  'No smoking or pets',
+  'Return with the same fuel or charge level'
+];
+
+const FLEET: Car[] = [
   {
     id: 'car-audi-r8',
     name: 'Audi R8 V10 Performance',
@@ -37,7 +44,7 @@ export const CARS_DATA: Car[] = [
       'Adaptive Magnetic Ride',
       'Heated Nappa Leather Seats'
     ],
-    location: 'Beverly Hills, CA',
+    location: 'Victoria Island, Lagos',
     isAvailable: true,
     isPopular: true,
     isFeatured: true,
@@ -68,7 +75,6 @@ export const CARS_DATA: Car[] = [
     galleryImages: [
       '/images/car_black_luxury_suv_1794399931535.jpg',
       '/images/car_hero_banner_1794399931970.jpg',
-      '/images/car_white_electric_sedan_1794399932107.jpg',
     ],
     description: 'The pinnacle of refined British luxury and commanding off-road poise. The Long Wheelbase Autobiography offers executive airline rear seating with hot stone massage, Meridian Signature audio, and whisper-quiet acoustic cabin insulation.',
     features: [
@@ -81,57 +87,13 @@ export const CARS_DATA: Car[] = [
       'Soft-Close Luxury Doors',
       'Cabin Air Purification Plus'
     ],
-    location: 'Beverly Hills, CA',
+    location: 'Calabar, Cross River State',
     isAvailable: true,
     isPopular: true,
     isFeatured: true,
     hostName: 'Aurevon Services Fleet',
     hostRating: 4.98,
     mileageLimit: '300 miles / day'
-  },
-  {
-    id: 'car-lucid-air',
-    name: 'Lucid Air Grand Touring',
-    brand: 'Lucid',
-    model: 'Grand Touring Performance',
-    year: 2024,
-    category: 'Electric',
-    pricePerDay: 800000,
-    pricePerHour: 180000,
-    rating: 4.98,
-    reviewCount: 86,
-    powerHp: 819,
-    acceleration0to100: 3.0,
-    topSpeedKmH: 270,
-    transmission: 'Automatic',
-    fuelType: 'Electric',
-    seats: 5,
-    doors: 4,
-    color: 'Pearl Stellar White',
-    imageUrl: '/images/car_white_electric_sedan_1794399932107.jpg',
-    galleryImages: [
-      '/images/car_white_electric_sedan_1794399932107.jpg',
-      '/images/car_grey_sports_coupe_1794399933041.jpg',
-      '/images/car_hero_banner_1794399931970.jpg',
-    ],
-    description: 'The world-record electric luxury cruiser. Boasting a staggering 516-mile EPA range, dual ultra-compact electric motors pushing 819 horsepower, and a breathtaking 34-inch curved 5K Glass Cockpit floating display.',
-    features: [
-      '516 Miles Ultra-Long Range',
-      '34-Inch Curved 5K Glass Cockpit',
-      'DreamDrive Pro Semi-Autonomous',
-      'Surreal Sound 21-Speaker System',
-      'Ultra-Fast 900V+ Fast Charging',
-      'Glass Canopy Panoramic Roof',
-      'Wireless Phone Charging',
-      'Active Noise Cancellation'
-    ],
-    location: 'Los Angeles Downtown, CA',
-    isAvailable: true,
-    isPopular: true,
-    isFeatured: false,
-    hostName: 'Volt Luxe Collection',
-    hostRating: 4.96,
-    mileageLimit: 'Unlimited Electric Miles'
   },
   {
     id: 'car-bmw-m4',
@@ -169,57 +131,13 @@ export const CARS_DATA: Car[] = [
       'Active M Differential',
       'Adaptive M Suspension'
     ],
-    location: 'Santa Monica, CA',
+    location: 'Calabar, Cross River State',
     isAvailable: true,
     isPopular: false,
     isFeatured: true,
     hostName: 'Bavarian Sport Rentals',
     hostRating: 4.93,
     mileageLimit: '200 miles / day'
-  },
-  {
-    id: 'car-taycan-cross',
-    name: 'Porsche Taycan 4S Cross',
-    brand: 'Porsche',
-    model: 'Taycan 4S Cross Turismo',
-    year: 2024,
-    category: 'Electric',
-    pricePerDay: 800000,
-    pricePerHour: 200000,
-    rating: 4.94,
-    reviewCount: 77,
-    powerHp: 562,
-    acceleration0to100: 3.9,
-    topSpeedKmH: 250,
-    transmission: 'Automatic',
-    fuelType: 'Electric',
-    seats: 5,
-    doors: 4,
-    color: 'Carrera Ice White',
-    imageUrl: '/images/car_white_electric_sedan_1794399932107.jpg',
-    galleryImages: [
-      '/images/car_white_electric_sedan_1794399932107.jpg',
-      '/images/car_hero_banner_1794399931970.jpg',
-      '/images/car_red_sportscar_1794399930525.jpg',
-    ],
-    description: 'Soul, electrified with rugged versatility. The Taycan Cross Turismo combines pure Porsche driving dynamics with increased ground clearance, Gravel mode, and an expansive tailgate for weekend getaways.',
-    features: [
-      'Performance Battery Plus (93.4 kWh)',
-      'Porsche 4D Chassis Control',
-      'Bose Surround Sound System',
-      'Porsche Connect & Smart Navigation',
-      'Off-Road Design Package',
-      'LED Matrix Headlights with PDLS+',
-      '18-Way Adaptive Sports Seats',
-      'Panoramic Fixed Glass Roof'
-    ],
-    location: 'Newport Beach, CA',
-    isAvailable: true,
-    isPopular: true,
-    isFeatured: false,
-    hostName: 'Stuttgart Select',
-    hostRating: 4.97,
-    mileageLimit: 'Unlimited Electric Miles'
   },
   {
     id: 'car-g63-amg',
@@ -257,7 +175,7 @@ export const CARS_DATA: Car[] = [
       'Carbon Fiber Trim Elements',
       'Multibeam LED Headlights'
     ],
-    location: 'Beverly Hills, CA',
+    location: 'Calabar, Cross River State',
     isAvailable: true,
     isPopular: true,
     isFeatured: true,
@@ -266,6 +184,59 @@ export const CARS_DATA: Car[] = [
     mileageLimit: '200 miles / day'
   }
 ];
+
+/**
+ * Fixed-price packages. Priced on value (what's included), not as discounts off the daily rate,
+ * and promo codes don't stack on them.
+ */
+const weekendEscape = (carId: string, price: number): RatePackage => ({
+  id: `pkg-weekend-${carId}`,
+  name: 'Weekend Escape',
+  description: 'Friday to Monday at one fixed price — collect after work, return Monday morning.',
+  durationUnit: 'day',
+  duration: 3,
+  price,
+  includes: ['Friday pick-up, Monday return at the same time', '750 km included', 'Full tank at pick-up'],
+  pickupDays: [5],
+  active: true
+});
+
+const redCarpet = (carId: string, price: number): RatePackage => ({
+  id: `pkg-redcarpet-${carId}`,
+  name: 'Red Carpet & Wedding',
+  description: 'A 6-hour block for weddings, premieres and big arrivals, with a professional chauffeur.',
+  durationUnit: 'hour',
+  duration: 6,
+  price,
+  includes: ['Professional chauffeur', 'Ribbon and floral detailing on request', 'Valet-ready, fully detailed car', 'Up to 2 venue stops'],
+  pickupDays: [],
+  active: true
+});
+
+const weekly = (carId: string, price: number): RatePackage => ({
+  id: `pkg-weekly-${carId}`,
+  name: 'Seven-Day Rate',
+  description: 'A full week at a fixed weekly rate.',
+  durationUnit: 'day',
+  duration: 7,
+  price,
+  includes: ['7 days, any start day', '1,500 km included', 'Mid-week wash and check'],
+  pickupDays: [],
+  active: true
+});
+
+const PACKAGES: Record<string, RatePackage[]> = {
+  'car-audi-r8': [weekendEscape('car-audi-r8', 2200000), redCarpet('car-audi-r8', 1250000)],
+  'car-range-rover': [weekendEscape('car-range-rover', 2200000), redCarpet('car-range-rover', 1400000), weekly('car-range-rover', 4900000)],
+  'car-bmw-m4': [weekendEscape('car-bmw-m4', 2200000)],
+  'car-g63-amg': [redCarpet('car-g63-amg', 1500000), weekendEscape('car-g63-amg', 2300000), weekly('car-g63-amg', 5100000)]
+};
+
+export const CARS_DATA: Car[] = FLEET.map((car) => ({
+  ...car,
+  rules: car.rules ?? DEFAULT_RENTAL_RULES,
+  packages: car.packages ?? PACKAGES[car.id] ?? []
+}));
 
 export const INITIAL_EXTRA_SERVICES: ExtraService[] = [
   {
@@ -303,12 +274,12 @@ export const INITIAL_EXTRA_SERVICES: ExtraService[] = [
 ];
 
 export const AVAILABLE_LOCATIONS = [
-  { id: 'loc-1', name: 'Beverly Hills - Wilshire Blvd', city: 'Los Angeles, CA', icon: 'Building' },
-  { id: 'loc-2', name: 'Los Angeles Intl Airport (LAX)', city: 'VIP Curbside Terminal', icon: 'Plane' },
-  { id: 'loc-3', name: 'Santa Monica - Ocean Avenue', city: 'Santa Monica, CA', icon: 'MapPin' },
-  { id: 'loc-4', name: 'Newport Beach Luxury Marina', city: 'Orange County, CA', icon: 'Anchor' },
-  { id: 'loc-5', name: 'San Francisco Intl Airport (SFO)', city: 'Private Jet Terminal', icon: 'Plane' },
-  { id: 'loc-6', name: 'Manhattan 5th Ave Concierge', city: 'New York, NY', icon: 'Building' }
+  { id: 'loc-1', name: 'Calabar - Marian Road', city: 'Calabar, Cross River State', icon: 'Building' },
+  { id: 'loc-2', name: 'Calabar - Margaret Ekpo Airport (CBQ)', city: 'Arrivals hall, Calabar', icon: 'Plane' },
+  { id: 'loc-3', name: 'Calabar - Marina Resort', city: 'Waterfront, Calabar', icon: 'Anchor' },
+  { id: 'loc-4', name: 'Lagos - Victoria Island', city: 'Victoria Island, Lagos', icon: 'Building' },
+  { id: 'loc-5', name: 'Lagos - Murtala Muhammed Airport (LOS)', city: 'Ikeja, Lagos', icon: 'Plane' },
+  { id: 'loc-6', name: 'Lagos - Lekki Phase 1', city: 'Lekki, Lagos', icon: 'MapPin' }
 ];
 
 export const INITIAL_BOOKINGS: Booking[] = [
@@ -320,8 +291,8 @@ export const INITIAL_BOOKINGS: Booking[] = [
     returnDate: '2026-11-13',
     pickupTime: '10:00 AM',
     returnTime: '06:00 PM',
-    pickupLocation: 'Beverly Hills - Wilshire Blvd',
-    returnLocation: 'Beverly Hills - Wilshire Blvd',
+    pickupLocation: 'Calabar - Marian Road',
+    returnLocation: 'Calabar - Marian Road',
     durationUnit: 'day',
     durationValue: 3,
     totalDays: 3,
@@ -350,8 +321,8 @@ export const INITIAL_BOOKINGS: Booking[] = [
     returnDate: '2026-11-23',
     pickupTime: '11:00 AM',
     returnTime: '11:00 AM',
-    pickupLocation: 'Los Angeles Intl Airport (LAX)',
-    returnLocation: 'Los Angeles Intl Airport (LAX)',
+    pickupLocation: 'Lagos - Murtala Muhammed Airport (LOS)',
+    returnLocation: 'Lagos - Murtala Muhammed Airport (LOS)',
     durationUnit: 'day',
     durationValue: 3,
     totalDays: 3,
@@ -374,14 +345,14 @@ export const INITIAL_BOOKINGS: Booking[] = [
   },
   {
     id: 'BK-51920',
-    carId: 'car-lucid-air',
-    car: CARS_DATA[2],
+    carId: 'car-bmw-m4',
+    car: CARS_DATA.find((c) => c.id === 'car-bmw-m4')!,
     pickupDate: '2026-10-14',
     returnDate: '2026-10-16',
     pickupTime: '09:00 AM',
     returnTime: '05:00 PM',
-    pickupLocation: 'Santa Monica - Ocean Avenue',
-    returnLocation: 'Santa Monica - Ocean Avenue',
+    pickupLocation: 'Lagos - Lekki Phase 1',
+    returnLocation: 'Lagos - Lekki Phase 1',
     durationUnit: 'day',
     durationValue: 2,
     totalDays: 2,

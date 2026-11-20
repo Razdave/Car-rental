@@ -9,7 +9,8 @@ import { Button } from '../ui/Button';
 import { Sheet } from '../ui/Sheet';
 
 export const CancelBookingSheet: React.FC<{ booking: Booking | null; onClose: () => void }> = ({ booking, onClose }) => {
-  const { cancelBooking, showToast } = useAppState();
+  const { cancelBooking } = useAppState();
+  const [busy, setBusy] = useState(false);
   return (
     <Sheet
       open={booking !== null}
@@ -22,11 +23,13 @@ export const CancelBookingSheet: React.FC<{ booking: Booking | null; onClose: ()
             Keep booking
           </Button>
           <Button
-            onClick={() => {
+            disabled={busy}
+            onClick={async () => {
               if (!booking) return;
-              cancelBooking(booking.id);
-              showToast('Booking cancelled');
-              onClose();
+              setBusy(true);
+              const ok = await cancelBooking(booking.id);
+              setBusy(false);
+              if (ok) onClose();
             }}
           >
             Yes, cancel
@@ -52,6 +55,7 @@ export const CancelBookingSheet: React.FC<{ booking: Booking | null; onClose: ()
 export const ExtendBookingSheet: React.FC<{ booking: Booking | null; onClose: () => void }> = ({ booking, onClose }) => {
   const { extendBooking, showToast } = useAppState();
   const [amount, setAmount] = useState(1);
+  const [busy, setBusy] = useState(false);
   useEffect(() => setAmount(1), [booking?.id]);
 
   if (!booking) return null;
@@ -81,10 +85,15 @@ export const ExtendBookingSheet: React.FC<{ booking: Booking | null; onClose: ()
         <Button
           block
           size="lg"
-          onClick={() => {
-            extendBooking(booking.id, amount);
-            showToast(`Trip extended by ${durationLabel(amount, unit)}`, 'success');
-            onClose();
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            const ok = await extendBooking(booking.id, amount);
+            setBusy(false);
+            if (ok) {
+              showToast(`Trip extended by ${durationLabel(amount, unit)}`, 'success');
+              onClose();
+            }
           }}
         >
           Extend for {formatNaira(extraCost)}

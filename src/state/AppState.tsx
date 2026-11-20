@@ -1,10 +1,10 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { CARS_DATA, INITIAL_BOOKINGS, USER_PROFILE } from '../data/cars';
-import type { Booking, Car, FilterOptions } from '../types/car';
-import { fetchCars } from '../lib/api';
-import { addDays, addHours, todayISO } from '../lib/dates';
+import { AVAILABLE_LOCATIONS, CARS_DATA } from '../data/cars';
+import type { Booking, Car, CustomerVerification, FilterOptions } from '../types/car';
+import { backend, type Profile } from '../lib/backend';
+import { addDays, todayISO } from '../lib/dates';
 import { DEFAULT_FILTERS } from '../lib/filters';
-import { calculateQuote, type BookingDraft } from '../lib/pricing';
+import type { BookingDraft } from '../lib/pricing';
 import { readStored, writeStored } from '../lib/storage';
 
 export type FleetSource = 'loading' | 'live' | 'demo';
@@ -26,10 +26,19 @@ interface AppState {
   cars: Car[];
   fleetSource: FleetSource;
   getCar: (id: string | undefined) => Car | undefined;
+  /** Cars that are booked, blocked or out of service for the searched dates (live). */
+  unavailableIds: string[];
 
-  // User
-  profile: typeof USER_PROFILE;
-  updateProfile: (patch: Partial<typeof USER_PROFILE>) => void;
+  // Account
+  profile: Profile | null;
+  authReady: boolean;
+  isStaff: boolean;
+  setProfile: (p: Profile | null) => void;
+  /** Screening status of the signed-in customer (null while loading or signed out). */
+  verification: CustomerVerification | null;
+  refreshVerification: () => Promise<void>;
+  updateProfile: (patch: Partial<Profile>) => Promise<void>;
+  signOut: () => Promise<void>;
 
   // Favorites
   favorites: string[];
@@ -37,10 +46,10 @@ interface AppState {
 
   // Bookings
   bookings: Booking[];
-  addBooking: (booking: Booking) => void;
-  updateBooking: (id: string, patch: Partial<Booking>) => void;
-  cancelBooking: (id: string) => void;
-  extendBooking: (id: string, amount: number) => void;
+  upsertBooking: (booking: Booking) => void;
+  refreshBookings: () => Promise<void>;
+  cancelBooking: (id: string) => Promise<boolean>;
+  extendBooking: (id: string, amount: number) => Promise<boolean>;
 
   // Search context shared by Home → Explore → Booking
   filters: FilterOptions;
@@ -73,25 +82,29 @@ interface AppState {
 
 const AppStateContext = createContext<AppState | null>(null);
 
-const DEFAULT_LOCATION = 'Beverly Hills - Wilshire Blvd';
+const DEFAULT_LOCATION = 'Calabar - Marian Road';
+/** A hub saved in the browser may no longer exist (e.g. the old US hubs); fall back to the default. */
+const knownLocation = (name: string) => (AVAILABLE_LOCATIONS.some((l) => l.name === name) ? name : DEFAULT_LOCATION);
+const errorMessage = (e: unknown) => (e instanceof Error ? e.message : 'Something went wrong. Please try again.');
 
 export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const [cars, setCars] = useState<Car[]>(CARS_DATA);
   const [fleetSource, setFleetSource] = useState<FleetSource>('loading');
+  const [unavailableIds, setUnavailableIds] = useState<string[]>([]);
 
-  const [profile, setProfile] = useState(() => readStored('aurevon.profile', USER_PROFILE));
-  const [favorites, setFavorites] = useState<string[]>(() =>
-    readStored('aurevon.favorites', ['car-audi-r8', 'car-range-rover'])
-  );
-  const [bookings, setBookings] = useState<Booking[]>(() => readStored('aurevon.bookings', INITIAL_BOOKINGS));
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [favorites, setFavorites] = useState<string[]>(() => readStored('aurevon.guestFavorites', []));
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [verification, setVerification] = useState<CustomerVerification | null>(null);
 
   const [filters, setFilters] = useState<FilterOptions>(DEFAULT_FILTERS);
   const [trip, setTrip] = useState<TripSearch>(() => {
     const start = addDays(todayISO(), 1);
     return { pickupDate: start, returnDate: addDays(start, 3) };
   });
-  const [pickupLocation, setPickupLocation] = useState(() => readStored('aurevon.pickup', DEFAULT_LOCATION));
-  const [returnLocation, setReturnLocation] = useState(() => readStored('aurevon.return', DEFAULT_LOCATION));
+  const [pickupLocation, setPickupLocation] = useState(() => knownLocation(readStored('aurevon.pickup', DEFAULT_LOCATION)));
+  const [returnLocation, setReturnLocation] = useState(() => knownLocation(readStored('aurevon.return', DEFAULT_LOCATION)));
 
   const [draft, setDraftState] = useState<BookingDraft | null>(() => readStored('aurevon.draft', null, 'session'));
 
@@ -101,27 +114,111 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const toastId = useRef(0);
 
-  // Load the live fleet; keep the bundled demo fleet if the API is unreachable.
+  const dismissToast = useCallback((id: number) => setToasts((prev) => prev.filter((t) => t.id !== id)), []);
+  const showToast = useCallback(
+    (message: string, tone: Toast['tone'] = 'default') => {
+      const id = ++toastId.current;
+      setToasts((prev) => [...prev.slice(-2), { id, message, tone }]);
+      window.setTimeout(() => dismissToast(id), 3600);
+    },
+    [dismissToast]
+  );
+
+  // ---- Fleet (live) ----
+  const loadCars = useCallback(async () => {
+    try {
+      const result = await backend.listCars();
+      setCars(result.cars);
+      setFleetSource(result.live ? 'live' : 'demo');
+    } catch (error) {
+      console.warn('Fleet unavailable, using bundled sample fleet.', error);
+      setFleetSource('demo');
+    }
+  }, []);
+
+  const loadAvailability = useCallback(async () => {
+    try {
+      setUnavailableIds(
+        await backend.unavailableCarIds({ pickupDate: trip.pickupDate, pickupTime: '10:00 AM', returnDate: trip.returnDate, returnTime: '10:00 AM' })
+      );
+    } catch (error) {
+      console.warn('Could not load availability.', error);
+    }
+  }, [trip]);
+
+  useEffect(() => {
+    void loadCars();
+  }, [loadCars]);
+
+  useEffect(() => {
+    void loadAvailability();
+    return backend.onFleetChange(() => {
+      void loadCars();
+      void loadAvailability();
+    });
+  }, [loadAvailability, loadCars]);
+
+  // ---- Account ----
   useEffect(() => {
     let active = true;
-    fetchCars()
-      .then((apiCars) => {
-        if (!active) return;
-        setCars(apiCars);
-        setFleetSource('live');
-      })
-      .catch((error: unknown) => {
-        console.warn('Fleet API unavailable, using bundled demo fleet. Start it with `npm run server`.', error);
-        if (active) setFleetSource('demo');
-      });
+    backend
+      .getProfile()
+      .then((p) => active && setProfile(p))
+      .catch(() => active && setProfile(null))
+      .finally(() => active && setAuthReady(true));
+    const off = backend.onAuthChange((p) => setProfile(p));
     return () => {
       active = false;
+      off();
     };
   }, []);
 
-  useEffect(() => writeStored('aurevon.favorites', favorites), [favorites]);
-  useEffect(() => writeStored('aurevon.bookings', bookings), [bookings]);
-  useEffect(() => writeStored('aurevon.profile', profile), [profile]);
+  // ---- Bookings & favourites follow the signed-in user ----
+  const refreshBookings = useCallback(async () => {
+    try {
+      setBookings(await backend.listMyBookings());
+    } catch (error) {
+      console.warn('Could not load bookings.', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!authReady) return;
+    void refreshBookings();
+    if (profile) {
+      backend.listFavorites().then((saved) => {
+        // Merge anything saved while signed out.
+        const guest = readStored<string[]>('aurevon.guestFavorites', []);
+        guest.filter((id) => !saved.includes(id)).forEach((id) => void backend.setFavorite(id, true));
+        setFavorites([...new Set([...saved, ...guest])]);
+        writeStored('aurevon.guestFavorites', null);
+      }).catch(() => {});
+    }
+    return backend.onMyBookingsChange(() => void refreshBookings());
+  }, [authReady, profile?.id, refreshBookings]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!profile) writeStored('aurevon.guestFavorites', favorites);
+  }, [favorites, profile]);
+
+  const refreshVerification = useCallback(async () => {
+    try {
+      setVerification(await backend.getMyVerification());
+    } catch {
+      setVerification(null);
+    }
+  }, []);
+
+  // Reload screening status on sign-in and whenever staff review it (bookings channel carries it in demo mode).
+  useEffect(() => {
+    if (!profile) {
+      setVerification(null);
+      return;
+    }
+    void refreshVerification();
+    return backend.onMyBookingsChange(() => void refreshVerification());
+  }, [profile?.id, refreshVerification]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => writeStored('aurevon.pickup', pickupLocation), [pickupLocation]);
   useEffect(() => writeStored('aurevon.return', returnLocation), [returnLocation]);
 
@@ -130,72 +227,69 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     writeStored('aurevon.draft', next, 'session');
   }, []);
 
-  const dismissToast = useCallback((id: number) => setToasts((prev) => prev.filter((t) => t.id !== id)), []);
-  const showToast = useCallback(
-    (message: string, tone: Toast['tone'] = 'default') => {
-      const id = ++toastId.current;
-      setToasts((prev) => [...prev.slice(-2), { id, message, tone }]);
-      window.setTimeout(() => dismissToast(id), 3200);
-    },
-    [dismissToast]
-  );
-
   const getCar = useCallback((id: string | undefined) => cars.find((c) => c.id === id), [cars]);
 
   const toggleFavorite = useCallback(
     (carId: string) => {
       const saved = !favorites.includes(carId);
       setFavorites((prev) => (saved ? [...prev.filter((id) => id !== carId), carId] : prev.filter((id) => id !== carId)));
+      if (profile) void backend.setFavorite(carId, saved).catch(() => showToast('Couldn’t save that change', 'error'));
       showToast(saved ? 'Saved to favourites' : 'Removed from favourites', saved ? 'success' : 'default');
     },
-    [favorites, showToast]
+    [favorites, profile, showToast]
   );
 
-  const addBooking = useCallback((booking: Booking) => setBookings((prev) => [booking, ...prev]), []);
-
-  const updateBooking = useCallback(
-    (id: string, patch: Partial<Booking>) =>
-      setBookings((prev) => prev.map((b) => (b.id === id ? { ...b, ...patch } : b))),
+  const upsertBooking = useCallback(
+    (booking: Booking) => setBookings((prev) => [booking, ...prev.filter((b) => b.id !== booking.id)]),
     []
   );
 
   const cancelBooking = useCallback(
-    (id: string) => updateBooking(id, { status: 'cancelled', managementStatus: 'cancelled' }),
-    [updateBooking]
+    async (id: string) => {
+      try {
+        upsertBooking(await backend.cancelBooking(id));
+        showToast('Booking cancelled — a confirmation has been sent');
+        return true;
+      } catch (error) {
+        showToast(errorMessage(error), 'error');
+        return false;
+      }
+    },
+    [showToast, upsertBooking]
   );
 
-  /** Extends by whole days (daily rentals) or hours (hourly rentals) and re-prices with the same rules as checkout. */
-  const extendBooking = useCallback((id: string, amount: number) => {
-    setBookings((prev) =>
-      prev.map((b) => {
-        if (b.id !== id) return b;
-        const unit = b.durationUnit ?? 'day';
-        const next =
-          unit === 'day'
-            ? { date: addDays(b.returnDate, amount), time: b.returnTime }
-            : addHours(b.returnDate, b.returnTime, amount);
-        const quote = calculateQuote({
-          car: b.car,
-          durationUnit: unit,
-          pickupDate: b.pickupDate,
-          pickupTime: b.pickupTime,
-          returnDate: next.date,
-          returnTime: next.time,
-          extras: b.extraServices
-        });
-        return {
-          ...b,
-          returnDate: next.date,
-          returnTime: next.time,
-          durationValue: quote.durationValue,
-          totalDays: quote.totalDays,
-          basePrice: quote.basePrice,
-          taxAmount: quote.taxAmount,
-          totalAmount: Math.max(0, quote.totalAmount - b.discount)
-        };
-      })
-    );
-  }, []);
+  const extendBooking = useCallback(
+    async (id: string, amount: number) => {
+      try {
+        upsertBooking(await backend.extendBooking(id, amount));
+        return true;
+      } catch (error) {
+        showToast(errorMessage(error), 'error');
+        return false;
+      }
+    },
+    [showToast, upsertBooking]
+  );
+
+  const updateProfile = useCallback(
+    async (patch: Partial<Profile>) => {
+      try {
+        setProfile(await backend.updateProfile(patch));
+      } catch (error) {
+        showToast(errorMessage(error), 'error');
+        throw error;
+      }
+    },
+    [showToast]
+  );
+
+  const signOut = useCallback(async () => {
+    await backend.signOut();
+    setProfile(backend.kind === 'local' ? await backend.getProfile() : null);
+    setBookings(backend.kind === 'local' ? await backend.listMyBookings() : []);
+    setFavorites([]);
+    showToast('Signed out');
+  }, [showToast]);
 
   const resetFilters = useCallback(() => setFilters(DEFAULT_FILTERS), []);
 
@@ -208,45 +302,24 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     [locationPicker]
   );
 
+  const isStaff = Boolean(profile && profile.role !== 'customer');
+
   const value = useMemo<AppState>(
     () => ({
-      cars,
-      fleetSource,
-      getCar,
-      profile,
-      updateProfile: (patch) => setProfile((p) => ({ ...p, ...patch })),
-      favorites,
-      toggleFavorite,
-      bookings,
-      addBooking,
-      updateBooking,
-      cancelBooking,
-      extendBooking,
-      filters,
-      setFilters,
-      resetFilters,
-      trip,
-      setTrip,
-      pickupLocation,
-      returnLocation,
-      draft,
-      setDraft,
-      filterSheetOpen,
-      setFilterSheetOpen,
-      notificationsOpen,
-      setNotificationsOpen,
-      locationPicker,
-      openLocationPicker: setLocationPicker,
-      closeLocationPicker: () => setLocationPicker(null),
-      selectLocation,
-      toasts,
-      showToast,
-      dismissToast
+      cars, fleetSource, getCar, unavailableIds,
+      profile, authReady, isStaff, setProfile, updateProfile, signOut, verification, refreshVerification,
+      favorites, toggleFavorite,
+      bookings, upsertBooking, refreshBookings, cancelBooking, extendBooking,
+      filters, setFilters, resetFilters, trip, setTrip, pickupLocation, returnLocation,
+      draft, setDraft,
+      filterSheetOpen, setFilterSheetOpen, notificationsOpen, setNotificationsOpen,
+      locationPicker, openLocationPicker: setLocationPicker, closeLocationPicker: () => setLocationPicker(null), selectLocation,
+      toasts, showToast, dismissToast
     }),
     [
-      cars, fleetSource, getCar, profile, favorites, toggleFavorite, bookings, addBooking, updateBooking,
-      cancelBooking, extendBooking, filters, resetFilters, trip, pickupLocation, returnLocation, draft, setDraft,
-      filterSheetOpen, notificationsOpen, locationPicker, selectLocation, toasts, showToast, dismissToast
+      cars, fleetSource, getCar, unavailableIds, profile, authReady, isStaff, updateProfile, signOut, verification, refreshVerification, favorites, toggleFavorite,
+      bookings, upsertBooking, refreshBookings, cancelBooking, extendBooking, filters, resetFilters, trip, pickupLocation,
+      returnLocation, draft, setDraft, filterSheetOpen, notificationsOpen, locationPicker, selectLocation, toasts, showToast, dismissToast
     ]
   );
 

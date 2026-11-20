@@ -1,8 +1,14 @@
 import React, { useState } from 'react';
-import { Award, Bell, ChevronRight, CreditCard, Globe, LogOut, PhoneCall, ShieldCheck } from 'lucide-react';
+import { Award, Bell, BellRing, ChevronRight, CreditCard, Globe, LayoutDashboard, LogOut, MessageSquare, PhoneCall, ShieldCheck, UserRound } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { backend } from '../../lib/backend';
+import { disablePush, enablePush, pushEnabled, pushPermission } from '../../lib/push';
 import { useAppState } from '../../state/AppState';
 import { Field } from '../booking/BookingParts';
-import { Button, cn } from '../ui/Button';
+import { LoyaltyCard } from '../cx/LoyaltyCard';
+import { STATUS_COPY } from '../../lib/verification';
+import { completedTrips, loyaltyFor } from '../../lib/loyalty';
+import { Button, cn, LinkButton } from '../ui/Button';
 import { Card, Container, PageTitle, SectionLabel } from '../ui/Layout';
 import { Sheet } from '../ui/Sheet';
 
@@ -36,19 +42,57 @@ const Row: React.FC<{
 };
 
 export const ProfileScreen: React.FC = () => {
-  const { profile, updateProfile, bookings, favorites, showToast } = useAppState();
+  const { profile, updateProfile, bookings, favorites, showToast, isStaff, signOut, verification } = useAppState();
+  const navigate = useNavigate();
   const [sheet, setSheet] = useState<null | 'edit' | 'license' | 'payment' | 'support'>(null);
-  const [form, setForm] = useState({ fullName: profile.fullName, email: profile.email, phone: profile.phone });
-  const [notifications, setNotifications] = useState(profile.notificationsEnabled);
+  const [form, setForm] = useState({ fullName: '', phone: '', licenseNumber: '', licenseExpiry: '' });
   const close = () => setSheet(null);
+  const [push, setPush] = useState(pushEnabled());
+
+  if (!profile) {
+    return (
+      <Container className="max-w-md py-12">
+        <Card className="p-6 text-center">
+          <span className="mx-auto flex size-14 items-center justify-center rounded-full bg-surface-2 text-ink-soft">
+            <UserRound className="size-7" />
+          </span>
+          <h1 className="mt-4 text-xl font-extrabold">Sign in to Aurevon</h1>
+          <p className="mt-1 text-sm text-ink-soft">See your trips, sign rental agreements and message the team.</p>
+          <LinkButton to="/signin?next=/profile" block size="lg" className="mt-5">
+            Sign in or create account
+          </LinkButton>
+        </Card>
+      </Container>
+    );
+  }
+  const notifications = profile.smsOptIn;
+  const togglePush = async () => {
+    if (push) {
+      disablePush();
+      setPush(false);
+      return;
+    }
+    const ok = await enablePush();
+    setPush(ok);
+    showToast(ok ? 'Push notifications on for this device' : pushPermission() === 'denied' ? 'Notifications are blocked — allow them in your browser settings' : 'Push notifications aren’t supported on this browser', ok ? 'success' : 'error');
+  };
 
   const trips = bookings.filter((b) => b.status !== 'cancelled').length;
 
-  const save = (event: React.FormEvent) => {
+  const save = async (event: React.FormEvent) => {
     event.preventDefault();
-    updateProfile({ fullName: form.fullName.trim(), email: form.email.trim(), phone: form.phone.trim() });
-    showToast('Profile updated', 'success');
-    close();
+    try {
+      await updateProfile({
+        fullName: form.fullName.trim(),
+        phone: form.phone.trim(),
+        licenseNumber: form.licenseNumber.trim().toUpperCase(),
+        licenseExpiry: form.licenseExpiry.trim()
+      });
+      showToast('Profile updated', 'success');
+      close();
+    } catch {
+      /* toast shown by updateProfile */
+    }
   };
 
   return (
@@ -65,7 +109,7 @@ export const ProfileScreen: React.FC = () => {
             </p>
             <p className="truncate text-sm text-ink-soft">{profile.email}</p>
             <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-surface-2 px-3 py-1 text-xs font-bold">
-              <Award className="size-3.5 text-brand" /> {profile.memberTier}
+              <Award className="size-3.5 text-brand" /> {loyaltyFor(completedTrips(bookings)).tier.name} member
             </span>
             <Button
               variant="secondary"
@@ -73,7 +117,7 @@ export const ProfileScreen: React.FC = () => {
               block
               className="mt-4"
               onClick={() => {
-                setForm({ fullName: profile.fullName, email: profile.email, phone: profile.phone });
+                setForm({ fullName: profile.fullName, phone: profile.phone, licenseNumber: profile.licenseNumber, licenseExpiry: profile.licenseExpiry });
                 setSheet('edit');
               }}
             >
@@ -96,9 +140,41 @@ export const ProfileScreen: React.FC = () => {
         </div>
 
         <div className="mt-6 space-y-6 lg:mt-0">
+          <section id="loyalty" className="scroll-mt-24">
+            <SectionLabel>Loyalty</SectionLabel>
+            <LoyaltyCard />
+          </section>
+
+          {isStaff && (
+            <section>
+              <SectionLabel>Staff</SectionLabel>
+              <Card className="overflow-hidden">
+                <Row
+                  icon={LayoutDashboard}
+                  title="Rental management dashboard"
+                  subtitle={backend.isDemo ? 'Demo mode — manage bookings, fleet and customers' : 'Bookings, fleet, customers and messages'}
+                  onClick={() => navigate('/admin')}
+                />
+              </Card>
+            </section>
+          )}
+
           <section>
             <SectionLabel>Driving & payment</SectionLabel>
             <Card className="divide-y divide-line overflow-hidden">
+              <Row
+                icon={ShieldCheck}
+                title="Identity verification"
+                subtitle={verification ? STATUS_COPY[verification.status].title : 'Loading…'}
+                onClick={() => navigate('/verify')}
+                trailing={
+                  verification && (
+                    <span className={cn('rounded-full px-2.5 py-1 text-xs font-bold', verification.status === 'verified' ? 'bg-emerald-50 text-emerald-700' : verification.status === 'pending' ? 'bg-sky-50 text-sky-700' : 'bg-amber-50 text-amber-800')}>
+                      {verification.status === 'verified' ? 'Verified' : verification.status === 'pending' ? 'In review' : 'Action needed'}
+                    </span>
+                  )
+                }
+              />
               <Row
                 icon={ShieldCheck}
                 title="Driving licence"
@@ -115,21 +191,35 @@ export const ProfileScreen: React.FC = () => {
             <Card className="divide-y divide-line overflow-hidden">
               <Row
                 icon={Bell}
-                title="Trip notifications"
-                subtitle="Pick-up reminders and booking updates"
+                title="Text message reminders"
+                subtitle="Pick-up and return reminders by SMS. Booking emails are always sent."
                 trailing={
                   <button
                     type="button"
                     role="switch"
                     aria-checked={notifications}
-                    aria-label="Trip notifications"
-                    onClick={() => {
-                      setNotifications((v) => !v);
-                      updateProfile({ notificationsEnabled: !notifications });
-                    }}
+                    aria-label="Text message reminders"
+                    onClick={() => void updateProfile({ smsOptIn: !notifications, notificationsEnabled: !notifications })}
                     className={cn('relative h-7 w-12 shrink-0 rounded-full transition-colors', notifications ? 'bg-brand' : 'bg-line')}
                   >
                     <span className={cn('absolute top-1 size-5 rounded-full bg-white shadow transition-[left]', notifications ? 'left-6' : 'left-1')} />
+                  </button>
+                }
+              />
+              <Row
+                icon={BellRing}
+                title="Push notifications"
+                subtitle="Booking updates and replies on this device"
+                trailing={
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={push}
+                    aria-label="Push notifications"
+                    onClick={() => void togglePush()}
+                    className={cn('relative h-7 w-12 shrink-0 rounded-full transition-colors', push ? 'bg-brand' : 'bg-line')}
+                  >
+                    <span className={cn('absolute top-1 size-5 rounded-full bg-white shadow transition-[left]', push ? 'left-6' : 'left-1')} />
                   </button>
                 }
               />
@@ -140,8 +230,11 @@ export const ProfileScreen: React.FC = () => {
           <section>
             <SectionLabel>Help</SectionLabel>
             <Card className="divide-y divide-line overflow-hidden">
+              <Row icon={MessageSquare} title="Messages" subtitle="Chat with the rental team" onClick={() => navigate('/messages')} />
               <Row icon={PhoneCall} title="24/7 roadside assistance" subtitle="Call our concierge any time" onClick={() => setSheet('support')} />
-              <Row icon={LogOut} title="Sign out" subtitle="Account sign-in is coming soon" danger onClick={() => showToast('Account sign-in is coming soon')} />
+              {backend.kind === 'supabase' && (
+                <Row icon={LogOut} title="Sign out" subtitle={profile.email} danger onClick={() => void signOut()} />
+              )}
             </Card>
           </section>
         </div>
@@ -152,11 +245,15 @@ export const ProfileScreen: React.FC = () => {
           <Field label="Full name">
             <input className="field" required autoComplete="name" value={form.fullName} onChange={(e) => setForm({ ...form, fullName: e.target.value })} />
           </Field>
-          <Field label="Email">
-            <input className="field" type="email" required autoComplete="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
-          </Field>
+
           <Field label="Phone">
             <input className="field" type="tel" required autoComplete="tel" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+          </Field>
+          <Field label="Driving licence number">
+            <input className="field uppercase" value={form.licenseNumber} onChange={(e) => setForm({ ...form, licenseNumber: e.target.value })} />
+          </Field>
+          <Field label="Licence expiry" hint="As printed on your licence, e.g. 11/2029">
+            <input className="field" value={form.licenseExpiry} onChange={(e) => setForm({ ...form, licenseExpiry: e.target.value })} />
           </Field>
           <Button type="submit" block size="lg">
             Save changes

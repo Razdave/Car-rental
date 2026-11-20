@@ -1,6 +1,6 @@
 import type { Car, CarCategory, FilterOptions } from '../types/car';
 
-export const CATEGORIES: CarCategory[] = ['All', 'Sports', 'SUV', 'Electric', 'Luxury', 'Sedan'];
+export const CATEGORIES: CarCategory[] = ['All', 'Sports', 'SUV', 'Luxury', 'Sedan'];
 
 export const PRICE_MIN = 100000;
 export const PRICE_MAX = 1000000;

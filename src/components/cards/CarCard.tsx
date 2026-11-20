@@ -9,6 +9,8 @@ import { cn } from '../ui/Button';
 interface CarCardProps {
   car: Car;
   layout?: 'standard' | 'horizontal';
+  /** Booked, blocked or out of service for the searched dates. */
+  unavailable?: boolean;
 }
 
 const FavoriteButton: React.FC<{ car: Car; className?: string }> = ({ car, className }) => {
@@ -30,7 +32,7 @@ const FavoriteButton: React.FC<{ car: Car; className?: string }> = ({ car, class
   );
 };
 
-export const CarCard: React.FC<CarCardProps> = ({ car, layout = 'standard' }) => {
+export const CarCard: React.FC<CarCardProps> = ({ car, layout = 'standard', unavailable = false }) => {
   if (layout === 'horizontal') {
     return (
       <article className="relative">
@@ -74,6 +76,9 @@ export const CarCard: React.FC<CarCardProps> = ({ car, layout = 'standard' }) =>
           <span className="absolute left-3 top-3 rounded-full bg-white/90 px-2.5 py-1 text-xs font-bold backdrop-blur">
             {car.category}
           </span>
+          {unavailable && (
+            <span className="absolute inset-x-0 bottom-0 bg-ink/80 py-2 text-center text-sm font-bold text-white">Booked for your dates</span>
+          )}
         </div>
 
         <div className="flex flex-1 flex-col p-4 sm:p-5">
@@ -106,7 +111,10 @@ export const CarCard: React.FC<CarCardProps> = ({ car, layout = 'standard' }) =>
                 {formatNaira(car.pricePerDay)}
                 <span className="text-sm font-medium text-ink-soft"> /day</span>
               </p>
-              <p className="mt-1 text-xs text-ink-soft">or {formatNaira(car.pricePerHour)} /hour</p>
+              <p className="mt-1 text-xs text-ink-soft">
+                or {formatNaira(car.pricePerHour)} /hour
+                {Boolean(car.packages?.some((p) => p.active)) && <span className="font-bold text-brand"> · Packages</span>}
+              </p>
             </div>
             <span className="inline-flex min-h-11 items-center gap-1.5 rounded-xl bg-ink px-4 text-sm font-bold text-white transition-colors group-hover:bg-brand">
               Rent

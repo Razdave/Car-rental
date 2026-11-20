@@ -1,24 +1,26 @@
 import React, { useState } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { CreditCard, Loader2, Lock, Tag, X } from 'lucide-react';
-import type { Booking } from '../../types/car';
 import { useAppState } from '../../state/AppState';
-import { createBooking } from '../../lib/api';
+import { backend } from '../../lib/backend';
 import { formatDate } from '../../lib/dates';
 import { durationLabel, PROMO_CODES } from '../../lib/pricing';
+import { depositFor } from '../../lib/verification';
 import { formatNaira } from '../../utils/currency';
 import { BookingSteps, CarSummary, Field, PriceSummary } from '../booking/BookingParts';
 import { Button, cn } from '../ui/Button';
 import { Card, Container, DetailHeader, MobileActionBar, SectionLabel } from '../ui/Layout';
 
-type Method = 'card' | 'applepay' | 'googlepay' | 'paypal';
+type Method = 'paystack' | 'card' | 'transfer';
 
-const METHODS: { id: Method; label: string; sub: string }[] = [
-  { id: 'card', label: 'Card', sub: 'Visa, Mastercard, Verve' },
-  { id: 'applepay', label: 'Apple Pay', sub: 'Fast checkout' },
-  { id: 'googlepay', label: 'Google Pay', sub: 'Fast checkout' },
-  { id: 'paypal', label: 'PayPal', sub: 'Pay with your account' }
-];
+/** Supabase mode charges through Paystack's hosted checkout; the device demo simulates a card payment. */
+const METHODS: { id: Method; label: string; sub: string }[] =
+  backend.kind === 'supabase'
+    ? [{ id: 'paystack', label: 'Pay securely with Paystack', sub: 'Card, bank transfer or USSD' }]
+    : [
+        { id: 'card', label: 'Card', sub: 'Visa, Mastercard, Verve' },
+        { id: 'transfer', label: 'Bank transfer', sub: 'Simulated in demo' }
+      ];
 
 const digits = (v: string) => v.replace(/\D/g, '');
 const formatCardNumber = (v: string) => digits(v).slice(0, 19).replace(/(\d{4})(?=\d)/g, '$1 ');
@@ -54,10 +56,10 @@ const validateCard = (holder: string, number: string, expiry: string, cvc: strin
 };
 
 export const PaymentScreen: React.FC = () => {
-  const { draft, setDraft, addBooking, fleetSource } = useAppState();
+  const { draft, setDraft, upsertBooking, profile, authReady, verification } = useAppState();
   const navigate = useNavigate();
 
-  const [method, setMethod] = useState<Method>('card');
+  const [method, setMethod] = useState<Method>(METHODS[0].id);
   const [holder, setHolder] = useState(draft?.driverInfo.fullName ?? '');
   const [number, setNumber] = useState('');
   const [expiry, setExpiry] = useState('');
@@ -72,6 +74,9 @@ export const PaymentScreen: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   if (!draft) return <Navigate to="/explore" replace />;
+  if (authReady && !profile) return <Navigate to="/signin?next=/checkout" replace />;
+  if (verification && !['pending', 'verified'].includes(verification.status)) return <Navigate to="/verify?next=/checkout" replace />;
+  const deposit = depositFor(draft.car);
 
   const discount = promo ? PROMO_CODES[promo].discount(draft.totalAmount) : 0;
   const total = Math.max(0, draft.totalAmount - discount);
@@ -105,40 +110,30 @@ export const PaymentScreen: React.FC = () => {
         : METHODS.find((m) => m.id === method)!.label;
 
     try {
-      let booking: Booking;
-      if (fleetSource === 'demo') {
-        // The API is unreachable: keep the flow usable for demos with a device-only booking.
-        await new Promise((r) => setTimeout(r, 900));
-        booking = {
-          ...draft,
-          id: `DEMO-${Math.floor(10000 + Math.random() * 90000)}`,
-          carId: draft.car.id,
-          discount,
-          totalAmount: total,
-          status: 'upcoming',
-          managementStatus: 'pending',
-          paymentMethod,
-          createdAt: new Date().toISOString(),
-          digitalPassCode: `PASS-${Math.random().toString(36).slice(2, 8).toUpperCase()}`
-        };
-      } else {
-        booking = await createBooking({
-          carId: draft.car.id,
-          pickupDate: draft.pickupDate,
-          returnDate: draft.returnDate,
-          pickupTime: draft.pickupTime,
-          returnTime: draft.returnTime,
-          pickupLocation: draft.pickupLocation,
-          returnLocation: draft.returnLocation,
-          durationUnit: draft.durationUnit,
-          extraServices: draft.extraServices.map((s) => ({ id: s.id })),
-          driverInfo: draft.driverInfo,
-          paymentMethod,
-          promoCode: promo ?? undefined
-        });
-      }
-      addBooking(booking);
+      const booking = await backend.createBooking({
+        carId: draft.car.id,
+        pickupDate: draft.pickupDate,
+        returnDate: draft.returnDate,
+        pickupTime: draft.pickupTime,
+        returnTime: draft.returnTime,
+        pickupLocation: draft.pickupLocation,
+        returnLocation: draft.returnLocation,
+        durationUnit: draft.durationUnit,
+        extraServiceIds: draft.extraServices.map((s) => s.id),
+        driverInfo: draft.driverInfo,
+        paymentMethod,
+        promoCode: promo ?? undefined,
+        packageId: draft.packageId ?? null
+      });
+      upsertBooking(booking);
       setDraft(null);
+      const returnUrl = `${window.location.origin}/bookings/${booking.id}?new=1`;
+      const payment = await backend.startPayment(booking.id, returnUrl);
+      if (payment.redirectUrl) {
+        window.location.assign(payment.redirectUrl); // Paystack hosted checkout
+        return;
+      }
+      if (payment.booking) upsertBooking(payment.booking);
       navigate(`/bookings/${booking.id}?new=1`, { replace: true });
     } catch (err) {
       console.error('Unable to save the booking.', err);
@@ -148,7 +143,12 @@ export const PaymentScreen: React.FC = () => {
   };
 
   const lines = [
-    { label: `Rental (${durationLabel(draft.durationValue, draft.durationUnit)})`, amount: draft.basePrice },
+    {
+      label: draft.packageName
+        ? `${draft.packageName} (${durationLabel(draft.durationValue, draft.durationUnit)}, fixed price)`
+        : `Rental (${durationLabel(draft.durationValue, draft.durationUnit)})`,
+      amount: draft.basePrice
+    },
     ...(extrasTotal > 0 ? [{ label: 'Add-ons', amount: extrasTotal }] : []),
     { label: 'Taxes & fees', amount: draft.taxAmount },
     ...(discount > 0 ? [{ label: `Promo ${promo}`, amount: discount, negative: true }] : [])
@@ -252,7 +252,11 @@ export const PaymentScreen: React.FC = () => {
             {/* Promo */}
             <section>
               <SectionLabel>Promo code</SectionLabel>
-              {promo ? (
+              {draft.packageName ? (
+                <p className="rounded-2xl bg-surface-2 p-4 text-sm text-ink-muted">
+                  <strong className="text-ink">{draft.packageName}</strong> is a fixed package price, so promo codes don’t apply.
+                </p>
+              ) : promo ? (
                 <div className="flex items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
                   <span className="flex items-center gap-2 text-sm font-bold text-emerald-800">
                     <Tag className="size-4" />
@@ -295,7 +299,7 @@ export const PaymentScreen: React.FC = () => {
             <section className="lg:hidden">
               <SectionLabel>Price</SectionLabel>
               <Card className="p-5">
-                <PriceSummary lines={lines} total={total} />
+                <PriceSummary lines={lines} total={total} note={`Refundable security deposit of ${formatNaira(deposit)} is paid next, after this payment.`} />
               </Card>
             </section>
 
@@ -307,7 +311,7 @@ export const PaymentScreen: React.FC = () => {
 
             <p className="flex items-center justify-center gap-2 text-sm text-ink-soft">
               <Lock className="size-4 text-emerald-700" />
-              Demo checkout — no payment is taken.
+              {backend.kind === 'supabase' ? 'Payments are processed securely by Paystack.' : 'Demo checkout — no payment is taken.'}
             </p>
           </div>
 
@@ -315,6 +319,9 @@ export const PaymentScreen: React.FC = () => {
             <Card className="sticky top-36 space-y-5 p-6">
               <CarSummary car={draft.car} detail={tripDetail} />
               <PriceSummary lines={lines} total={total} />
+              <p className="rounded-2xl bg-surface p-3 text-sm text-ink-muted">
+                <strong className="text-ink">Security deposit {formatNaira(deposit)}</strong> — paid separately after this payment and released after the car is returned and checked.
+              </p>
               <Button size="lg" block onClick={pay} disabled={processing}>
                 {processing ? <Loader2 className="size-5 animate-spin" /> : <Lock className="size-5" />}
                 {payLabel}

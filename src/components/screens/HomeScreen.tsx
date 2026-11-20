@@ -9,6 +9,7 @@ import { TripSearchForm } from '../forms/TripSearchForm';
 import { Button } from '../ui/Button';
 import { Container } from '../ui/Layout';
 import { FleetNotice } from '../ui/FleetNotice';
+import { HomeCxCards } from '../cx/HomeCxCards';
 
 const greeting = () => {
   const h = new Date().getHours();
@@ -60,7 +61,7 @@ export const HomeScreen: React.FC = () => {
       {/* Hero + search */}
       <section className="pt-5 sm:pt-8">
         <p className="text-sm font-semibold text-ink-soft">
-          {greeting()}, {profile.fullName.split(' ')[0]}
+          {greeting()}{profile ? `, ${profile.fullName.split(' ')[0]}` : ''}
         </p>
         <h1 className="mt-1 text-[1.75rem] font-extrabold leading-tight tracking-tight sm:text-4xl">
           Find your next <span className="text-brand">drive</span>
@@ -106,6 +107,8 @@ export const HomeScreen: React.FC = () => {
         </Link>
       )}
 
+      <HomeCxCards />
+
       {/* Categories */}
       <section className="mt-8" aria-label="Browse by category">
         <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 no-scrollbar sm:mx-0 sm:flex-wrap sm:px-0">
@@ -148,7 +151,7 @@ export const HomeScreen: React.FC = () => {
 
       {/* More */}
       <section className="mt-10">
-        <SectionHeader title="More to explore" subtitle="Electric, sport and luxury picks" to="/explore" />
+        <SectionHeader title="More to explore" subtitle="Sport, SUV and luxury picks" to="/explore" />
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 lg:gap-4">
           {more.map((car) => (
             <CarCard key={`more-${car.id}`} car={car} layout="horizontal" />

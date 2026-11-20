@@ -52,13 +52,11 @@ test('authenticates staff, manages bookings and cars, and stores GPS updates', a
     pricePerDay: number;
     pricePerHour: number;
   }>;
-  assert.equal(seededPublicCars.length, 6);
+  assert.equal(seededPublicCars.length, 4);
   assert.ok(seededPublicCars.every((car) => car.pricePerDay === 800000));
   assert.equal(seededPublicCars.find((car) => car.id === 'car-audi-r8')?.pricePerHour, 150000);
   assert.equal(seededPublicCars.find((car) => car.id === 'car-range-rover')?.pricePerHour, 180000);
-  assert.equal(seededPublicCars.find((car) => car.id === 'car-lucid-air')?.pricePerHour, 180000);
   assert.equal(seededPublicCars.find((car) => car.id === 'car-bmw-m4')?.pricePerHour, 200000);
-  assert.equal(seededPublicCars.find((car) => car.id === 'car-taycan-cross')?.pricePerHour, 200000);
   assert.equal(seededPublicCars.find((car) => car.id === 'car-g63-amg')?.pricePerHour, 200000);
 
   const loginResponse = await fetch(`${baseUrl}/api/auth/login`, {

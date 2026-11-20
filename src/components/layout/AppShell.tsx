@@ -1,11 +1,12 @@
 import React, { useMemo, useState } from 'react';
 import { Link, NavLink, Outlet, ScrollRestoration, useLocation } from 'react-router-dom';
-import { Bell, Calendar, ChevronDown, Compass, Heart, Home, MapPin, User } from 'lucide-react';
+import { Bell, Calendar, ChevronDown, Compass, Heart, Home, LayoutDashboard, MapPin, User } from 'lucide-react';
 import { useAppState } from '../../state/AppState';
 import { readStored, writeStored } from '../../lib/storage';
 import { cn, IconButton } from '../ui/Button';
 import { Container } from '../ui/Layout';
 import { Toaster } from '../ui/Toaster';
+import { LiveEvents } from './LiveEvents';
 import { FilterModal } from '../modals/FilterModal';
 import { LocationPickerModal } from '../modals/LocationPickerModal';
 import { NotificationModal, useNotifications } from '../modals/NotificationModal';
@@ -20,7 +21,7 @@ const NAV = [
 
 /** Drill-down routes get their own back-button header and no tab bar on phones. */
 const isDetailRoute = (path: string) =>
-  path.startsWith('/cars/') || path === '/checkout' || /^\/bookings\/[^/]+/.test(path);
+  path.startsWith('/cars/') || ['/checkout', '/signin', '/messages', '/verify'].includes(path) || /^\/bookings\/[^/]+/.test(path);
 
 export const Logo: React.FC<{ className?: string }> = ({ className }) => (
   <Link to="/" className={cn('flex items-center gap-2 font-extrabold tracking-tight', className)} aria-label="Aurevon home">
@@ -35,7 +36,7 @@ export const Logo: React.FC<{ className?: string }> = ({ className }) => (
 
 export const AppShell: React.FC = () => {
   const { pathname } = useLocation();
-  const { favorites, bookings, pickupLocation, openLocationPicker, profile, setNotificationsOpen } = useAppState();
+  const { favorites, bookings, pickupLocation, openLocationPicker, profile, isStaff, setNotificationsOpen } = useAppState();
   const detail = isDetailRoute(pathname);
 
   const notifications = useNotifications();
@@ -65,7 +66,7 @@ export const AppShell: React.FC = () => {
       {/* Top bar — always on desktop; on phones only for top-level tabs */}
       <header
         className={cn(
-          'pt-safe sticky top-0 z-40 border-b border-line/70 bg-surface/90 backdrop-blur-md',
+          'pt-safe sticky top-0 z-40 print:hidden border-b border-line/70 bg-surface/90 backdrop-blur-md',
           detail && 'hidden lg:block'
         )}
       >
@@ -109,15 +110,29 @@ export const AppShell: React.FC = () => {
             <IconButton label="Notifications" onClick={openNotifications} badge={hasUnread}>
               <Bell className="size-[18px]" />
             </IconButton>
-            <NavLink
-              to="/profile"
-              aria-label="Profile"
-              className={({ isActive }) =>
-                cn('hidden size-11 overflow-hidden rounded-full ring-2 lg:block', isActive ? 'ring-brand' : 'ring-white')
-              }
-            >
-              <img src={profile.avatarUrl} alt="" className="size-full object-cover" />
-            </NavLink>
+            {isStaff && (
+              <NavLink
+                to="/admin"
+                className="hidden min-h-11 items-center gap-1.5 rounded-xl px-3 text-sm font-bold text-ink-muted hover:bg-white hover:text-ink lg:inline-flex"
+              >
+                <LayoutDashboard className="size-4" /> Staff
+              </NavLink>
+            )}
+            {profile ? (
+              <NavLink
+                to="/profile"
+                aria-label="Profile"
+                className={({ isActive }) =>
+                  cn('hidden size-11 overflow-hidden rounded-full bg-surface-2 ring-2 lg:block', isActive ? 'ring-brand' : 'ring-white')
+                }
+              >
+                <img src={profile.avatarUrl} alt="" className="size-full object-cover" />
+              </NavLink>
+            ) : (
+              <Link to="/signin" className="hidden min-h-11 items-center rounded-xl bg-ink px-4 text-sm font-bold text-white hover:bg-brand lg:inline-flex">
+                Sign in
+              </Link>
+            )}
           </div>
         </Container>
       </header>
@@ -130,7 +145,7 @@ export const AppShell: React.FC = () => {
       {!detail && (
         <nav
           aria-label="Main"
-          className="pb-safe fixed inset-x-0 bottom-0 z-40 border-t border-line bg-white/95 pt-1.5 shadow-[0_-4px_20px_rgb(8_8_8/0.04)] backdrop-blur-lg lg:hidden"
+          className="pb-safe fixed inset-x-0 bottom-0 z-40 print:hidden border-t border-line bg-white/95 pt-1.5 shadow-[0_-4px_20px_rgb(8_8_8/0.04)] backdrop-blur-lg lg:hidden"
         >
           <ul className="mx-auto grid max-w-lg grid-cols-5">
             {NAV.map((item) => {
@@ -172,6 +187,7 @@ export const AppShell: React.FC = () => {
       <LocationPickerModal />
       <NotificationModal notifications={notifications} />
       <Toaster />
+      <LiveEvents />
       <ScrollRestoration />
     </div>
   );

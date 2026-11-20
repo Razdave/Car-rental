@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Search, SearchX, SlidersHorizontal, X } from 'lucide-react';
 import type { FilterOptions } from '../../types/car';
 import { useAppState } from '../../state/AppState';
@@ -12,15 +12,26 @@ import { Container, EmptyState, PageTitle } from '../ui/Layout';
 import { FleetNotice } from '../ui/FleetNotice';
 
 export const ExploreScreen: React.FC = () => {
-  const { cars, filters, setFilters, resetFilters, setFilterSheetOpen, trip } = useAppState();
-  const results = filterCars(cars, filters);
+  const { cars, filters, setFilters, resetFilters, setFilterSheetOpen, trip, unavailableIds } = useAppState();
+  const [showBooked, setShowBooked] = useState(false);
+  const matches = filterCars(cars, filters);
+  const bookedCount = matches.filter((c) => unavailableIds.includes(c.id)).length;
+  const results = showBooked ? matches : matches.filter((c) => !unavailableIds.includes(c.id));
   const refinements = activeFilterCount(filters);
 
   return (
     <Container>
       <PageTitle
         title="Explore the fleet"
-        subtitle={`${results.length} of ${cars.length} cars · ${formatDateRange(trip.pickupDate, trip.returnDate)}`}
+        subtitle={
+          <span className="inline-flex flex-wrap items-center gap-x-2">
+            <span className="inline-flex items-center gap-1.5">
+              <span className="size-2 animate-pulse rounded-full bg-emerald-500" aria-hidden="true" />
+              {matches.length - bookedCount} available
+            </span>
+            <span>· {formatDateRange(trip.pickupDate, trip.returnDate)}</span>
+          </span>
+        }
       />
       <FleetNotice />
 
@@ -118,6 +129,16 @@ export const ExploreScreen: React.FC = () => {
         </aside>
 
         <section aria-live="polite">
+          {bookedCount > 0 && (
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-surface-2 px-4 py-2 text-sm text-ink-muted">
+              <span>
+                {bookedCount} {bookedCount === 1 ? 'car is' : 'cars are'} already booked for these dates.
+              </span>
+              <button type="button" onClick={() => setShowBooked((v) => !v)} className="min-h-11 font-bold text-brand hover:underline">
+                {showBooked ? 'Hide booked cars' : 'Show them'}
+              </button>
+            </div>
+          )}
           {results.length === 0 ? (
             <EmptyState
               icon={<SearchX className="size-7" />}
@@ -132,7 +153,7 @@ export const ExploreScreen: React.FC = () => {
           ) : (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:gap-6">
               {results.map((car) => (
-                <CarCard key={car.id} car={car} />
+                <CarCard key={car.id} car={car} unavailable={unavailableIds.includes(car.id)} />
               ))}
             </div>
           )}

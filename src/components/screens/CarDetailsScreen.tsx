@@ -1,11 +1,16 @@
 import React, { useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { backend } from '../../lib/backend';
 import { motion } from 'motion/react';
 import {
   Award, CarFront, Check, Fuel, Gauge, Heart, MessageSquare, Share2, ShieldCheck, Star, Timer, Users
 } from 'lucide-react';
 import { useAppState } from '../../state/AppState';
-import { formatDateRange } from '../../lib/dates';
+import { addDays, formatDateRange } from '../../lib/dates';
+import { AvailabilityCalendar } from '../cars/AvailabilityCalendar';
+import { depositFor } from '../../lib/verification';
+import { PackagesSection } from '../cars/PackagesSection';
+import { ReviewsSection } from '../cars/ReviewsSection';
 import { formatNaira } from '../../utils/currency';
 import { Button, cn, IconButton, LinkButton } from '../ui/Button';
 import { Card, Container, DetailHeader, EmptyState, MobileActionBar, SectionLabel } from '../ui/Layout';
@@ -13,7 +18,9 @@ import { Sheet } from '../ui/Sheet';
 
 export const CarDetailsScreen: React.FC = () => {
   const { carId } = useParams();
-  const { getCar, fleetSource, favorites, toggleFavorite, showToast, trip } = useAppState();
+  const { getCar, fleetSource, favorites, toggleFavorite, showToast, trip, setTrip, profile, unavailableIds } = useAppState();
+  const navigate = useNavigate();
+  const location = useLocation();
   const car = getCar(carId);
   const [imageIndex, setImageIndex] = useState(0);
   const [messageOpen, setMessageOpen] = useState(false);
@@ -61,13 +68,23 @@ export const CarDetailsScreen: React.FC = () => {
     }
   };
 
-  const sendMessage = (event: React.FormEvent) => {
+  const sendMessage = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!message.trim()) return;
-    setMessageOpen(false);
-    setMessage('');
-    showToast('Message sent — the host usually replies within 5 minutes', 'success');
+    if (!profile) {
+      navigate(`/signin?next=${encodeURIComponent(location.pathname)}`);
+      return;
+    }
+    try {
+      await backend.sendMessage(`About the ${car.name}: ${message.trim()}`);
+      setMessageOpen(false);
+      setMessage('');
+      showToast('Message sent — we usually reply within 5 minutes', 'success');
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : 'Message not sent', 'error');
+    }
   };
+  const bookedForTrip = unavailableIds.includes(car.id);
 
   const specs = [
     { icon: Gauge, label: 'Power', value: `${car.powerHp} hp` },
@@ -176,6 +193,46 @@ export const CarDetailsScreen: React.FC = () => {
             </ul>
           </Card>
 
+          {Boolean(car.packages?.some((p) => p.active)) && (
+            <Card className="mt-4 p-5 sm:p-6">
+              <SectionLabel>Packages — one fixed price</SectionLabel>
+              <PackagesSection car={car} />
+            </Card>
+          )}
+
+          {Boolean(car.rules?.length) && (
+            <Card className="mt-4 p-5 sm:p-6">
+              <SectionLabel>Rental rules</SectionLabel>
+              <ul className="space-y-2">
+                {car.rules!.map((r) => (
+                  <li key={r} className="flex items-start gap-2.5 text-sm">
+                    <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-ink" />
+                    {r}
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
+
+          <Card className="mt-4 p-5 sm:p-6">
+            <SectionLabel>Availability</SectionLabel>
+            <AvailabilityCalendar
+              carId={car.id}
+              selection={{ from: trip.pickupDate, to: trip.returnDate }}
+              onPick={(d) => {
+                const nights = Math.max(1, Math.round((Date.parse(trip.returnDate) - Date.parse(trip.pickupDate)) / 86400000));
+                setTrip({ pickupDate: d, returnDate: addDays(d, nights) });
+                showToast(`Pick-up set to ${d}`, 'success');
+              }}
+            />
+            <p className="mt-2 text-sm text-ink-soft">Tap a free day to start your trip then. Updates live as cars are booked.</p>
+          </Card>
+
+          <Card className="mt-4 p-5 sm:p-6">
+            <SectionLabel>Reviews</SectionLabel>
+            <ReviewsSection car={car} />
+          </Card>
+
           <Card className="mt-4 flex flex-wrap items-center justify-between gap-4 p-5 sm:p-6">
             <div className="flex min-w-0 items-center gap-3">
               <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-ink font-bold text-white">
@@ -198,7 +255,7 @@ export const CarDetailsScreen: React.FC = () => {
           <div className="mt-4 flex items-start gap-3 rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
             <Award className="mt-0.5 size-5 shrink-0 text-emerald-700" />
             <div>
-              <p className="text-sm font-bold text-emerald-900">Free cancellation</p>
+              <p className="text-sm font-bold text-emerald-900">Free cancellation · Refundable deposit {formatNaira(depositFor(car))}</p>
               <p className="text-sm text-emerald-800">Cancel up to 24 hours before pick-up for a full refund. 24/7 roadside assistance included.</p>
             </div>
           </div>
@@ -215,12 +272,16 @@ export const CarDetailsScreen: React.FC = () => {
             <div className="my-5 rounded-2xl bg-surface p-4 text-sm">
               <p className="text-xs font-bold uppercase tracking-wider text-ink-soft">Your dates</p>
               <p className="mt-1 font-bold">{formatDateRange(trip.pickupDate, trip.returnDate)}</p>
-              <p className="text-ink-soft">You can change dates and times on the next step.</p>
+              <p className={bookedForTrip ? 'font-semibold text-brand' : 'text-emerald-700'}>
+                {bookedForTrip ? 'Booked for these dates — pick other dates on the next step.' : 'Available for these dates'}
+              </p>
             </div>
             <LinkButton to={bookPath} size="lg" block>
               Book this car
             </LinkButton>
-            <p className="mt-3 text-center text-xs text-ink-soft">You won't be charged yet</p>
+            <p className="mt-3 text-center text-xs text-ink-soft">
+              You won't be charged yet · Refundable deposit {formatNaira(depositFor(car))} · Verified drivers 25+ only
+            </p>
           </Card>
         </aside>
       </Container>

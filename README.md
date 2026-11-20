@@ -1,6 +1,43 @@
 # Car rental app
 
-## Staff and fleet API
+## Web app
+
+Mobile-first React + Vite + Tailwind v4 app (installable PWA) with a staff dashboard and a Supabase backend.
+
+- `npm run dev` — app on http://localhost:3000. Without Supabase keys it runs in **demo mode**: data is stored on the device, payments and emails/SMS are simulated, and you're signed in as a demo admin so `/admin` works. Open the dashboard in a second tab to see changes sync live.
+- To go live on Supabase (Paystack payments, email/SMS/push, real accounts): [docs/SUPABASE_SETUP.md](docs/SUPABASE_SETUP.md).
+- `npm run test:db` replays all database migrations in an in-memory Postgres and checks the booking lifecycle; `npm run lint` type-checks the app and the legacy API.
+- Deploying as a static site needs an SPA fallback (included for Vercel in `vercel.json`).
+
+### What's in it
+
+| Area | Customer app | Staff dashboard (`/admin`) |
+| --- | --- | --- |
+| Online reservations | Search by hub and dates, daily or hourly pricing, add-ons, promo codes | Booking queue: approve, decline with a reason, start, complete |
+| Live availability & calendar | Booked cars hidden for your dates, month calendar per car, live re-check before checkout | 14-day fleet calendar, in/out of service, maintenance blocks |
+| Pricing | Standard daily and hourly rates, plus fixed-price packages (weekend specials, red-carpet/wedding blocks, weekly rates) with what's included | Create packages per car with templates; flags prices far below the standard rate; promo codes never stack on packages |
+| Payment processing | Paystack hosted checkout (card, transfer, USSD), verified server-side | Payment status, mark paid (cash or transfer) |
+| Digital rental agreements | Read, type name, draw signature; printable / save as PDF | A trip can't start until it's signed and paid |
+| Customer communication | Chat with the team; email/SMS confirmations and reminders; push notifications | Inbox, automated message log |
+| Customer screening | Verify before booking: licence (both sides), government ID, selfie, employment or company, 5-year driving record, date of birth (25+) | Verification queue with documents, per-check approve/reject with reasons; bookings can't be confirmed until verified; expiry tracked daily |
+| Security deposits | Refundable deposit per car, paid before pick-up; status and any amount kept shown on the booking | Trip can't start without a held deposit; release in full or keep part with a stated reason, refunded via Paystack |
+| Customer data | Account, licence details, booking history, SMS opt-in | Customer list, licence verification, notes, block |
+| Listings | Rules, photos and reviews on each car | Add/edit cars: photos, pricing, specs, rules, availability |
+| Reviews & repeat business | Rate completed trips (request sent 2 h after return); loyalty tiers with free add-ons and service perks, never lower rates; one-tap "Book again" | Experience tab: rating, review rate, repeat-customer rate; follow-up queue for ratings of 3★ or less; public replies; hide/publish |
+
+### Code map
+
+- `src/lib/backend/` — the single data layer: `local.ts` (demo) and `supabase.ts` (production) implement the interface in `types.ts`.
+- `src/lib/` — pricing, dates, filters, rental agreement text, push notifications.
+- `src/state/AppState.tsx` — app state; `src/components/screens/` — customer pages; `src/components/admin/` — staff dashboard.
+- `supabase/migrations/` — schema, security (RLS), booking functions, automation; `supabase/functions/` — Paystack and notification Edge Functions.
+- Routes: `/`, `/explore`, `/cars/:id`, `/cars/:id/book`, `/checkout`, `/bookings`, `/bookings/:id`, `/bookings/:id/agreement`, `/messages`, `/signin`, `/favorites`, `/profile`, `/admin`.
+- Static car photos live in `public/images/`; app icons and the web manifest in `public/`.
+- Store listing details (category Travel, English, age rating U): [docs/STORE_LISTING.md](docs/STORE_LISTING.md).
+
+## Legacy staff and fleet API (Express)
+
+Superseded by Supabase and kept for reference. In demo mode the app still uses it for cars and new bookings when it's running.
 
 The Express API uses Node.js 24 and SQLite. On first run it seeds the demo fleet and bookings from the app. It creates the initial administrator from environment variables; no default password is built into the project.
 
@@ -44,15 +81,13 @@ All management routes require a bearer token from `POST /api/auth/login`. Tokens
 
 Booking status transitions are `pending → confirmed → active → completed`; pending, confirmed, or active bookings can also be cancelled. Confirmation checks the vehicle's availability and overlapping reservations using the selected pickup/return times.
 
-Bookings can use a full-day rate or a fixed hourly rate. Hourly bookings use the existing pickup and return date/time fields, require at least one billable hour, and round partial hours up. Existing daily add-on rates are prorated over 24 hours for hourly bookings. The six seeded cars have a daily rate of ₦800,000:
+Bookings can use a full-day rate or a fixed hourly rate. Hourly bookings use the existing pickup and return date/time fields, require at least one billable hour, and round partial hours up. Existing daily add-on rates are prorated over 24 hours for hourly bookings. The four seeded cars have a daily rate of ₦800,000:
 
 | Vehicle | Hourly rate |
 | --- | ---: |
 | Audi R8 V10 Performance | ₦150,000 |
 | Range Rover Autobiography | ₦180,000 |
-| Lucid Air Grand Touring | ₦180,000 |
 | BMW M4 Competition | ₦200,000 |
-| Porsche Taycan 4S Cross | ₦200,000 |
 | Mercedes-AMG G63 | ₦200,000 |
 
 New cars added through the management API must include both `pricePerDay` and `pricePerHour`.
