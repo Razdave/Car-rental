@@ -45,7 +45,21 @@ for (const file of readdirSync(join(root, 'supabase/migrations')).sort()) {
 await db.exec(`grant usage on schema public to anon, authenticated; grant select, insert, update, delete on all tables in schema public to anon, authenticated; grant usage, select on all sequences in schema public to anon, authenticated;`);
 await db.exec(readFileSync(join(root, 'supabase/seed.sql'), 'utf8'));
 await db.exec(readFileSync(join(root, 'supabase/seed.sql'), 'utf8')); // idempotent
-ok((await db.query('select count(*)::int n from cars')).rows[0].n === 4, 'seed: 4 cars (re-run safe)');
+ok((await db.query('select count(*)::int n from cars')).rows[0].n === 11, 'seed: 11 fleet cars (re-run safe)');
+ok((await db.query("select count(*)::int n from cars where category not in ('SUV', 'Luxury')")).rows[0].n === 0, 'seed: fleet is SUV and Luxury only');
+
+// Test fixtures with fixed prices, so these checks don't depend on the live fleet's rates.
+await db.exec(`
+  insert into cars (id, name, brand, model, year, category, price_per_day, price_per_hour, transmission, fuel_type, seats, doors, image_path) values
+    ('car-audi-r8', 'Fixture Sports', 'Test', 'S', 2024, 'Sports', 800000, 150000, 'Automatic', 'Petrol', 2, 2, '/x.jpg'),
+    ('car-range-rover', 'Fixture SUV', 'Test', 'U', 2024, 'SUV', 800000, 180000, 'Automatic', 'Hybrid', 5, 4, '/x.jpg'),
+    ('car-bmw-m4', 'Fixture Coupe', 'Test', 'C', 2024, 'Sports', 800000, 200000, 'Automatic', 'Petrol', 4, 2, '/x.jpg'),
+    ('car-g63-amg', 'Fixture Luxury', 'Test', 'L', 2024, 'Luxury', 800000, 200000, 'Automatic', 'Petrol', 5, 4, '/x.jpg');
+  insert into rate_packages (id, car_id, name, description, duration_unit, duration, price, includes, pickup_days) values
+    ('pkg-weekend-car-range-rover', 'car-range-rover', 'Weekend Escape', '', 'day', 3, 2200000, '{}', array[5]),
+    ('pkg-redcarpet-car-range-rover', 'car-range-rover', 'Red Carpet & Wedding', '', 'hour', 6, 1400000, '{}', '{}'),
+    ('pkg-weekend-car-audi-r8', 'car-audi-r8', 'Weekend Escape', '', 'day', 3, 2200000, '{}', array[5]);
+`);
 
 // --- users
 const CUSTOMER = '11111111-1111-1111-1111-111111111111';
@@ -199,7 +213,10 @@ await as(CUSTOMER);
 await expectError(`select extend_booking($1, 1)`, [weekend.id], /can’t be extended online/, 'package bookings cannot be extended online');
 await db.exec(`set role anon`);
 const pubPkgs = (await db.query(`select count(*)::int n from rate_packages`)).rows[0].n;
-ok(pubPkgs === 9, `packages are publicly readable (${pubPkgs})`);
+await db.exec(`reset role`);
+const allActive = (await db.query(`select count(*)::int n from rate_packages p join cars c on c.id = p.car_id where p.active and c.is_available`)).rows[0].n;
+await db.exec(`set role anon`);
+ok(pubPkgs === allActive && pubPkgs > 3, `packages are publicly readable (${pubPkgs})`);
 const tampered = await db.query(`update rate_packages set price = 1 where id = 'pkg-weekend-car-range-rover'`);
 ok(tampered.affectedRows === 0, 'RLS: customer update of a package price affects 0 rows');
 await db.exec(`reset role`);

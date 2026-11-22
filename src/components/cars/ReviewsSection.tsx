@@ -32,15 +32,17 @@ export const ReviewsSection: React.FC<{ car: Car }> = ({ car }) => {
 
   return (
     <div>
-      <div className="mb-4 flex items-center gap-3">
-        <p className="text-3xl font-extrabold">{car.rating.toFixed(1)}</p>
-        <div>
-          <Stars value={car.rating} />
-          <p className="text-sm text-ink-soft">{car.reviewCount} reviews</p>
+      {car.reviewCount > 0 && (
+        <div className="mb-4 flex items-center gap-3">
+          <p className="text-3xl font-extrabold">{car.rating.toFixed(1)}</p>
+          <div>
+            <Stars value={car.rating} />
+            <p className="text-sm text-ink-soft">{car.reviewCount} {car.reviewCount === 1 ? 'review' : 'reviews'}</p>
+          </div>
         </div>
-      </div>
+      )}
       {reviews.length === 0 ? (
-        <p className="text-sm text-ink-soft">No written reviews yet.</p>
+        <p className="text-sm text-ink-soft">No reviews yet — this car is new to our fleet. Drivers can review it after their trip.</p>
       ) : (
         <ul className="space-y-4">
           {shown.map((r) => (

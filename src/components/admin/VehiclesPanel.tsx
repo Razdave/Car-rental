@@ -9,6 +9,7 @@ import { Card } from '../ui/Layout';
 import { Sheet } from '../ui/Sheet';
 import { Pill } from './AdminParts';
 import { PackagesEditor } from './PackagesEditor';
+import { PHOTO_CREDITS } from '../../data/photoCredits';
 
 const CATEGORIES: Exclude<CarCategory, 'All'>[] = ['Sports', 'SUV', 'Luxury', 'Sedan'];
 
@@ -112,7 +113,10 @@ export const VehiclesPanel: React.FC<Props> = ({ cars, run }) => {
                   <p className="truncate font-bold">{c.name}</p>
                   <p className="text-sm text-ink-soft">{c.category} · {c.galleryImages.length || 1} photos</p>
                 </div>
-                <Pill className={c.isAvailable ? 'bg-emerald-50 text-emerald-700' : 'bg-surface-2 text-ink-muted'}>{c.isAvailable ? 'Listed' : 'Hidden'}</Pill>
+                <span className="flex shrink-0 flex-col items-end gap-1">
+                  <Pill className={c.isAvailable ? 'bg-emerald-50 text-emerald-700' : 'bg-surface-2 text-ink-muted'}>{c.isAvailable ? 'Listed' : 'Hidden'}</Pill>
+                  {PHOTO_CREDITS[c.imageUrl] && <Pill className="bg-amber-50 text-amber-800">Stand-in photo</Pill>}
+                </span>
               </div>
               <p className="mt-2 text-sm">
                 <strong>{formatNaira(c.pricePerDay)}</strong>/day · <strong>{formatNaira(c.pricePerHour)}</strong>/hr
@@ -132,7 +136,13 @@ export const VehiclesPanel: React.FC<Props> = ({ cars, run }) => {
         {editing && (
           <form id="car-form" onSubmit={save} className="space-y-6">
             <section>
-              <p className="mb-2 text-sm font-bold text-ink-muted">Photos</p>
+              <p className="mb-1 text-sm font-bold text-ink-muted">Photos</p>
+              <p className="mb-2 text-sm text-ink-soft">
+                Landscape, at least 1600 px wide. Use the front three-quarter shot as the cover, and shoot every car in the same spot at your car stand. Full checklist: docs/PHOTO_GUIDE.md.
+              </p>
+              {PHOTO_CREDITS[editing.imageUrl] && (
+                <p className="mb-2 rounded-xl bg-amber-50 p-2.5 text-sm text-amber-900">This car still uses a stand-in photo. Add photos of your own car, make one the cover, and delete the stand-in.</p>
+              )}
               <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
                 {photos.map((p, i) => (
                   <div key={p + i} className="group relative overflow-hidden rounded-xl border border-line">

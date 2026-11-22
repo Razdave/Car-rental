@@ -87,10 +87,14 @@ export const CarCard: React.FC<CarCardProps> = ({ car, layout = 'standard', unav
               <p className="text-xs font-semibold uppercase tracking-wider text-ink-soft">{car.brand}</p>
               <h3 className="truncate text-lg font-bold leading-snug">{car.name}</h3>
             </div>
-            <span className="mt-1 inline-flex shrink-0 items-center gap-1 text-sm font-bold">
-              <Star className="size-4 fill-amber-400 text-amber-400" />
-              {car.rating.toFixed(1)}
-            </span>
+            {car.reviewCount > 0 ? (
+              <span className="mt-1 inline-flex shrink-0 items-center gap-1 text-sm font-bold">
+                <Star className="size-4 fill-amber-400 text-amber-400" />
+                {car.rating.toFixed(1)}
+              </span>
+            ) : (
+              <span className="mt-1 shrink-0 rounded-full bg-brand-soft px-2 py-0.5 text-xs font-bold text-brand">New</span>
+            )}
           </div>
 
           <ul className="mb-4 mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm text-ink-muted">

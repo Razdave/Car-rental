@@ -52,12 +52,11 @@ test('authenticates staff, manages bookings and cars, and stores GPS updates', a
     pricePerDay: number;
     pricePerHour: number;
   }>;
-  assert.equal(seededPublicCars.length, 4);
-  assert.ok(seededPublicCars.every((car) => car.pricePerDay === 800000));
-  assert.equal(seededPublicCars.find((car) => car.id === 'car-audi-r8')?.pricePerHour, 150000);
-  assert.equal(seededPublicCars.find((car) => car.id === 'car-range-rover')?.pricePerHour, 180000);
-  assert.equal(seededPublicCars.find((car) => car.id === 'car-bmw-m4')?.pricePerHour, 200000);
-  assert.equal(seededPublicCars.find((car) => car.id === 'car-g63-amg')?.pricePerHour, 200000);
+  assert.equal(seededPublicCars.length, 11);
+  assert.equal(seededPublicCars.find((car) => car.id === 'car-toyota-lc300')?.pricePerDay, 450000);
+  assert.equal(seededPublicCars.find((car) => car.id === 'car-toyota-lc300')?.pricePerHour, 70000);
+  assert.equal(seededPublicCars.find((car) => car.id === 'car-cadillac-escalade-2025')?.pricePerHour, 110000);
+  assert.equal(seededPublicCars.find((car) => car.id === 'car-toyota-rav4')?.pricePerDay, 150000);
 
   const loginResponse = await fetch(`${baseUrl}/api/auth/login`, {
     method: 'POST',
@@ -79,7 +78,7 @@ test('authenticates staff, manages bookings and cars, and stores GPS updates', a
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      carId: 'car-audi-r8',
+      carId: 'car-toyota-lc300',
       pickupDate: '2031-02-01',
       returnDate: '2031-02-03',
       pickupTime: '10:00 AM',
@@ -105,7 +104,7 @@ test('authenticates staff, manages bookings and cars, and stores GPS updates', a
     totalAmount: number;
     managementStatus: string;
   };
-  assert.equal(booking.totalAmount, 1732000);
+  assert.equal(booking.totalAmount, 976000);
   assert.equal(booking.managementStatus, 'pending');
   const privateStatusResponse = await fetch(`${baseUrl}/api/bookings/${booking.id}/status`, {
     headers: { 'X-Booking-Email': 'customer@example.test' }
@@ -121,7 +120,7 @@ test('authenticates staff, manages bookings and cars, and stores GPS updates', a
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      carId: 'car-audi-r8',
+      carId: 'car-toyota-lc300',
       pickupDate: '2031-02-02',
       returnDate: '2031-02-04',
       pickupTime: '10:00 AM',
@@ -145,7 +144,7 @@ test('authenticates staff, manages bookings and cars, and stores GPS updates', a
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      carId: 'car-audi-r8',
+      carId: 'car-toyota-lc300',
       pickupDate: '2031-02-05',
       returnDate: '2031-02-05',
       pickupTime: '09:00 AM',
@@ -173,14 +172,14 @@ test('authenticates staff, manages bookings and cars, and stores GPS updates', a
   };
   assert.equal(hourlyBooking.durationUnit, 'hour');
   assert.equal(hourlyBooking.durationValue, 3);
-  assert.equal(hourlyBooking.basePrice, 450000);
-  assert.equal(hourlyBooking.totalAmount, 489375);
+  assert.equal(hourlyBooking.basePrice, 210000);
+  assert.equal(hourlyBooking.totalAmount, 230175);
 
   const hourlyOverlapResponse = await fetch(`${baseUrl}/api/bookings`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      carId: 'car-audi-r8',
+      carId: 'car-toyota-lc300',
       pickupDate: '2031-02-05',
       returnDate: '2031-02-05',
       pickupTime: '10:00 AM',
@@ -205,7 +204,7 @@ test('authenticates staff, manages bookings and cars, and stores GPS updates', a
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      carId: 'car-audi-r8',
+      carId: 'car-toyota-lc300',
       pickupDate: '2031-02-05',
       returnDate: '2031-02-05',
       pickupTime: '11:30 AM',
@@ -264,7 +263,7 @@ test('authenticates staff, manages bookings and cars, and stores GPS updates', a
   const forbiddenStaffList = await fetch(`${baseUrl}/api/management/staff`, { headers: staffHeaders });
   assert.equal(forbiddenStaffList.status, 403);
 
-  const unavailableResponse = await fetch(`${baseUrl}/api/management/cars/car-bmw-m4/availability`, {
+  const unavailableResponse = await fetch(`${baseUrl}/api/management/cars/car-toyota-rav4/availability`, {
     method: 'PATCH',
     headers: staffHeaders,
     body: JSON.stringify({ isAvailable: false })
@@ -272,7 +271,7 @@ test('authenticates staff, manages bookings and cars, and stores GPS updates', a
   assert.equal(unavailableResponse.status, 200);
   const publicCars = await fetch(`${baseUrl}/api/cars`);
   const publicCarsBody = await publicCars.json() as Array<{ id: string }>;
-  assert.equal(publicCarsBody.some((car) => car.id === 'car-bmw-m4'), false);
+  assert.equal(publicCarsBody.some((car) => car.id === 'car-toyota-rav4'), false);
 
   const uploadResponse = await fetch(`${baseUrl}/api/management/cars/images`, {
     method: 'POST',
@@ -304,7 +303,7 @@ test('authenticates staff, manages bookings and cars, and stores GPS updates', a
       'X-GPS-Webhook-Secret': gpsSecret
     },
     body: JSON.stringify({
-      carId: 'car-bmw-m4',
+      carId: 'car-toyota-rav4',
       latitude: 6.5244,
       longitude: 3.3792,
       provider: 'test-provider',
@@ -344,7 +343,7 @@ test('migrates existing fleet rates and booking times', async () => {
       updated_at TEXT NOT NULL
     );
   `);
-  const legacyCar = { ...CARS_DATA[0], pricePerDay: 280000 };
+  const legacyCar = { ...CARS_DATA.find((car) => car.id === 'car-toyota-lc300')!, pricePerDay: 280000 };
   Reflect.deleteProperty(legacyCar, 'pricePerHour');
   const now = new Date().toISOString();
   legacyDatabase.prepare(`
@@ -395,16 +394,16 @@ test('migrates existing fleet rates and booking times', async () => {
   try {
     const carResponse = await fetch(`${migrationUrl}/api/cars`);
     const cars = await carResponse.json() as Array<{ id: string; pricePerDay: number; pricePerHour: number }>;
-    const migratedAudi = cars.find((car) => car.id === 'car-audi-r8');
-    assert.equal(migratedAudi?.pricePerDay, 800000);
-    assert.equal(migratedAudi?.pricePerHour, 150000);
+    const migratedAudi = cars.find((car) => car.id === 'car-toyota-lc300');
+    assert.equal(migratedAudi?.pricePerDay, 450000);
+    assert.equal(migratedAudi?.pricePerHour, 70000);
 
     const createHourlyBooking = (pickupTime: string, returnTime: string, email: string) =>
       fetch(`${migrationUrl}/api/bookings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          carId: 'car-audi-r8',
+          carId: 'car-toyota-lc300',
           pickupDate: '2032-03-01',
           returnDate: '2032-03-01',
           pickupTime,

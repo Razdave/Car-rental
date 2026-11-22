@@ -2,7 +2,7 @@ import React from 'react';
 import { Check, RotateCcw } from 'lucide-react';
 import type { FilterOptions } from '../../types/car';
 import { useAppState } from '../../state/AppState';
-import { CATEGORIES, filterCars, PRICE_MAX, PRICE_MIN, SORT_OPTIONS } from '../../lib/filters';
+import { availableCategories, filterCars, PRICE_MAX, PRICE_MIN, SORT_OPTIONS } from '../../lib/filters';
 import { formatNaira } from '../../utils/currency';
 import { Button, cn } from '../ui/Button';
 import { Sheet } from '../ui/Sheet';
@@ -20,12 +20,14 @@ interface FilterPanelProps {
   showSort?: boolean;
 }
 
-export const FilterPanel: React.FC<FilterPanelProps> = ({ filters, onChange, showSort = true }) => (
+export const FilterPanel: React.FC<FilterPanelProps> = ({ filters, onChange, showSort = true }) => {
+  const { cars } = useAppState();
+  return (
   <div className="space-y-7">
     <fieldset>
       <legend className="mb-3 text-xs font-bold uppercase tracking-wider text-ink-muted">Category</legend>
       <div className="flex flex-wrap gap-2">
-        {CATEGORIES.map((cat) => (
+        {availableCategories(cars).map((cat) => (
           <button
             key={cat}
             type="button"
@@ -120,7 +122,8 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({ filters, onChange, sho
       </fieldset>
     )}
   </div>
-);
+  );
+};
 
 export const FilterModal: React.FC = () => {
   const { filterSheetOpen, setFilterSheetOpen, filters, setFilters, resetFilters, cars } = useAppState();

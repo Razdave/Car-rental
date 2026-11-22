@@ -10,6 +10,7 @@ import { addDays, formatDateRange } from '../../lib/dates';
 import { AvailabilityCalendar } from '../cars/AvailabilityCalendar';
 import { depositFor } from '../../lib/verification';
 import { PackagesSection } from '../cars/PackagesSection';
+import { PHOTO_CREDITS } from '../../data/photoCredits';
 import { ReviewsSection } from '../cars/ReviewsSection';
 import { formatNaira } from '../../utils/currency';
 import { Button, cn, IconButton, LinkButton } from '../ui/Button';
@@ -124,6 +125,15 @@ export const CarDetailsScreen: React.FC = () => {
               className="aspect-[16/10] w-full object-cover"
             />
           </div>
+          {PHOTO_CREDITS[images[imageIndex]] && (
+            <p className="mt-1.5 text-right text-xs text-ink-soft">
+              Photo:{' '}
+              <a href={PHOTO_CREDITS[images[imageIndex]].source} target="_blank" rel="noreferrer" className="underline hover:text-ink">
+                {PHOTO_CREDITS[images[imageIndex]].author}
+              </a>
+              , {PHOTO_CREDITS[images[imageIndex]].license} via Wikimedia Commons (illustrative)
+            </p>
+          )}
           {images.length > 1 && (
             <div className="mt-3 flex gap-2" role="group" aria-label="Photos">
               {images.map((img, i) => (
@@ -153,11 +163,15 @@ export const CarDetailsScreen: React.FC = () => {
               <h1 className="text-2xl font-extrabold tracking-tight sm:text-3xl">{car.name}</h1>
               <p className="mt-1 text-sm text-ink-soft">{car.location}</p>
             </div>
-            <div className="flex items-center gap-1.5 rounded-xl bg-amber-50 px-3 py-1.5 text-sm font-bold text-amber-800">
-              <Star className="size-4 fill-amber-400 text-amber-400" />
-              {car.rating.toFixed(2)}
-              <span className="font-medium text-amber-700/80">({car.reviewCount} reviews)</span>
-            </div>
+            {car.reviewCount > 0 ? (
+              <div className="flex items-center gap-1.5 rounded-xl bg-amber-50 px-3 py-1.5 text-sm font-bold text-amber-800">
+                <Star className="size-4 fill-amber-400 text-amber-400" />
+                {car.rating.toFixed(2)}
+                <span className="font-medium text-amber-700/80">({car.reviewCount} {car.reviewCount === 1 ? 'review' : 'reviews'})</span>
+              </div>
+            ) : (
+              <span className="rounded-xl bg-brand-soft px-3 py-1.5 text-sm font-bold text-brand">New to the fleet</span>
+            )}
           </div>
 
           {/* Specs */}

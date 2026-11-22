@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Search, SearchX, SlidersHorizontal, X } from 'lucide-react';
 import type { FilterOptions } from '../../types/car';
 import { useAppState } from '../../state/AppState';
-import { activeFilterCount, CATEGORIES, filterCars, SORT_OPTIONS } from '../../lib/filters';
+import { activeFilterCount, availableCategories, filterCars, SORT_OPTIONS } from '../../lib/filters';
 import { formatDateRange } from '../../lib/dates';
 import { CarCard } from '../cards/CarCard';
 import { TripSearchForm } from '../forms/TripSearchForm';
@@ -97,7 +97,7 @@ export const ExploreScreen: React.FC = () => {
 
       {/* Category chips (phones/tablets — the sidebar covers desktop) */}
       <div className="-mx-4 mt-3 flex gap-2 overflow-x-auto px-4 pb-1 no-scrollbar sm:mx-0 sm:px-0 lg:hidden">
-        {CATEGORIES.map((cat) => (
+        {availableCategories(cars).map((cat) => (
           <button
             key={cat}
             type="button"

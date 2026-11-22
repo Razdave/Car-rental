@@ -2,7 +2,7 @@ import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ArrowRight, CalendarClock, ChevronRight, Copy, Sparkles } from 'lucide-react';
 import { useAppState } from '../../state/AppState';
-import { CATEGORIES } from '../../lib/filters';
+import { availableCategories, CATEGORIES } from '../../lib/filters';
 import { formatDate } from '../../lib/dates';
 import { CarCard } from '../cards/CarCard';
 import { TripSearchForm } from '../forms/TripSearchForm';
@@ -112,7 +112,7 @@ export const HomeScreen: React.FC = () => {
       {/* Categories */}
       <section className="mt-8" aria-label="Browse by category">
         <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 no-scrollbar sm:mx-0 sm:flex-wrap sm:px-0">
-          {CATEGORIES.map((cat) => (
+          {availableCategories(cars).map((cat) => (
             <button
               key={cat}
               type="button"
@@ -151,7 +151,7 @@ export const HomeScreen: React.FC = () => {
 
       {/* More */}
       <section className="mt-10">
-        <SectionHeader title="More to explore" subtitle="Sport, SUV and luxury picks" to="/explore" />
+        <SectionHeader title="More to explore" subtitle="SUVs, people-carriers and executive picks" to="/explore" />
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 lg:gap-4">
           {more.map((car) => (
             <CarCard key={`more-${car.id}`} car={car} layout="horizontal" />

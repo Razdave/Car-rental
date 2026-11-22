@@ -267,7 +267,7 @@ begin
   else return new;
   end if;
   update public.cars set
-    rating = case when review_count + delta <= 0 then rating
+    rating = case when review_count + delta <= 0 then 5   -- no published reviews left: back to the 'new' default
                   else round((rating * review_count + delta * score)::numeric / (review_count + delta), 2) end,
     review_count = greatest(0, review_count + delta)
   where id = new.car_id;

@@ -33,6 +33,7 @@ Mobile-first React + Vite + Tailwind v4 app (installable PWA) with a staff dashb
 - `supabase/migrations/` — schema, security (RLS), booking functions, automation; `supabase/functions/` — Paystack and notification Edge Functions.
 - Routes: `/`, `/explore`, `/cars/:id`, `/cars/:id/book`, `/checkout`, `/bookings`, `/bookings/:id`, `/bookings/:id/agreement`, `/messages`, `/signin`, `/favorites`, `/profile`, `/admin`.
 - Static car photos live in `public/images/`; app icons and the web manifest in `public/`.
+- Fleet photos: the current photos are licensed stand-ins (credited on each car page). Shoot your own with [docs/PHOTO_GUIDE.md](docs/PHOTO_GUIDE.md) and upload them in Staff dashboard → Vehicles.
 - Store listing details (category Travel, English, age rating U): [docs/STORE_LISTING.md](docs/STORE_LISTING.md).
 
 ## Legacy staff and fleet API (Express)

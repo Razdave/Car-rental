@@ -178,10 +178,7 @@ let baseCars: Car[] = CARS_DATA;
 let carCache: Car[] = CARS_DATA;
 
 const SEED_REVIEWS: Review[] = [
-  { id: 'rv-1', carId: 'car-audi-r8', bookingId: 'BK-30001', authorName: 'Tunde A.', rating: 5, comment: 'Spotless car, delivered on time. The V10 is unreal.', createdAt: '2026-10-02T10:00:00Z', hidden: false },
-  { id: 'rv-2', carId: 'car-audi-r8', bookingId: 'BK-30002', authorName: 'Sarah K.', rating: 5, comment: 'Smooth pick-up and very helpful concierge.', createdAt: '2026-09-18T10:00:00Z', hidden: false },
-  { id: 'rv-3', carId: 'car-range-rover', bookingId: 'BK-30003', authorName: 'Chidi O.', rating: 5, comment: 'Perfect for a family weekend. Massage seats!', createdAt: '2026-10-21T10:00:00Z', hidden: false },
-  { id: 'rv-4', carId: 'car-bmw-m4', bookingId: 'BK-51920', authorName: 'Alex H.', rating: 4, comment: 'Sharp handling and spotless inside. Pick-up took a little longer than expected.', createdAt: '2026-10-17T10:00:00Z', hidden: false }
+  { id: 'rv-4', carId: 'car-toyota-prado', bookingId: 'BK-51920', authorName: 'Alex H.', rating: 4, comment: 'Comfortable on the long drive and spotless inside. Pick-up took a little longer than expected.', createdAt: '2026-10-17T10:00:00Z', hidden: false }
 ];
 const loadReviews = () => readStored<Review[]>(K.reviews, SEED_REVIEWS);
 
@@ -197,9 +194,10 @@ const withCustomCars = (base: Car[]) => {
     packages: c.packages ?? bundled(c.id)?.packages ?? []
   }));
   return merged.map((c) => {
-    const mine = reviews.filter((r) => r.carId === c.id && !SEED_REVIEWS.some((x) => x.id === r.id));
+    // Fleet cars start with no reviews, so every published review counts towards the rating.
+    const mine = reviews.filter((r) => r.carId === c.id);
     if (!mine.length) return c;
-    const total = c.rating * c.reviewCount + mine.reduce((sum, r) => sum + r.rating, 0);
+    const total = (c.reviewCount ? c.rating * c.reviewCount : 0) + mine.reduce((sum, r) => sum + r.rating, 0);
     return { ...c, reviewCount: c.reviewCount + mine.length, rating: Math.round((total / (c.reviewCount + mine.length)) * 100) / 100 };
   });
 };
@@ -279,10 +277,10 @@ export const localBackend: Backend = {
   },
 
   async listFavorites() {
-    return readStored<string[]>(K.favorites, ['car-audi-r8', 'car-range-rover']);
+    return readStored<string[]>(K.favorites, ['car-cadillac-escalade-2025', 'car-toyota-lc300']);
   },
   async setFavorite(carId, saved) {
-    const list = readStored<string[]>(K.favorites, ['car-audi-r8', 'car-range-rover']).filter((id) => id !== carId);
+    const list = readStored<string[]>(K.favorites, ['car-cadillac-escalade-2025', 'car-toyota-lc300']).filter((id) => id !== carId);
     writeStored(K.favorites, saved ? [...list, carId] : list);
   },
 

@@ -2,6 +2,10 @@ import type { Car, CarCategory, FilterOptions } from '../types/car';
 
 export const CATEGORIES: CarCategory[] = ['All', 'Sports', 'SUV', 'Luxury', 'Sedan'];
 
+/** Categories that currently have at least one listed car (empty classes are hidden from customers). */
+export const availableCategories = (cars: Car[]): CarCategory[] =>
+  CATEGORIES.filter((c) => c === 'All' || cars.some((car) => car.category === c));
+
 export const PRICE_MIN = 100000;
 export const PRICE_MAX = 1000000;
 
