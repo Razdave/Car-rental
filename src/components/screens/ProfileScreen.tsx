@@ -109,7 +109,7 @@ export const ProfileScreen: React.FC = () => {
             </p>
             <p className="truncate text-sm text-ink-soft">{profile.email}</p>
             <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-surface-2 px-3 py-1 text-xs font-bold">
-              <Award className="size-3.5 text-brand" /> {loyaltyFor(completedTrips(bookings)).tier.name} member
+              <Award className="size-3.5 text-brand" /> {loyaltyFor(completedTrips(bookings)).tier.id === 'member' ? 'Member' : `${loyaltyFor(completedTrips(bookings)).tier.name} member`}
             </span>
             <Button
               variant="secondary"

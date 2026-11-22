@@ -621,8 +621,8 @@ export const INITIAL_BOOKINGS: Booking[] = [
     totalAmount: 2299000,
     status: 'active',
     driverInfo: {
-      fullName: 'Alex Harrison',
-      email: 'alex.harrison@gmail.com',
+      fullName: 'Rhaz Ibe',
+      email: 'rhaz@example.com',
       phone: '+1 (310) 842-1980',
       licenseNumber: 'CA-9182374-DL',
       ageConfirmed: true
@@ -651,8 +651,8 @@ export const INITIAL_BOOKINGS: Booking[] = [
     totalAmount: 1587600,
     status: 'upcoming',
     driverInfo: {
-      fullName: 'Alex Harrison',
-      email: 'alex.harrison@gmail.com',
+      fullName: 'Rhaz Ibe',
+      email: 'rhaz@example.com',
       phone: '+1 (310) 842-1980',
       licenseNumber: 'CA-9182374-DL',
       ageConfirmed: true
@@ -681,8 +681,8 @@ export const INITIAL_BOOKINGS: Booking[] = [
     totalAmount: 554000,
     status: 'completed',
     driverInfo: {
-      fullName: 'Alex Harrison',
-      email: 'alex.harrison@gmail.com',
+      fullName: 'Rhaz Ibe',
+      email: 'rhaz@example.com',
       phone: '+1 (310) 842-1980',
       licenseNumber: 'CA-9182374-DL',
       ageConfirmed: true
@@ -694,8 +694,8 @@ export const INITIAL_BOOKINGS: Booking[] = [
 ];
 
 export const USER_PROFILE = {
-  fullName: 'Alex Harrison',
-  email: 'alex.harrison@gmail.com',
+  fullName: 'Rhaz Ibe',
+  email: 'rhaz@example.com',
   phone: '+1 (310) 842-1980',
   licenseNumber: 'CA-9182374-DL',
   licenseExpiry: '11/2029',

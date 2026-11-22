@@ -45,6 +45,27 @@ const TOPIC_FOR_KEY: Record<string, Topic[]> = {
   [K.verifications]: ['bookings']
 };
 
+/**
+ * Bump when the bundled demo data changes (fleet, demo customer, bookings…). Browsers that saved an
+ * older copy start fresh with the new data instead of showing stale cars and names.
+ * Keeps the visitor's own settings (push notifications).
+ */
+const DEMO_DATA_VERSION = 3;
+const KEEP_ON_RESET = new Set(['aurevon.pushEnabled', 'aurevon.demoVersion']);
+if (typeof window !== 'undefined') {
+  try {
+    if (localStorage.getItem('aurevon.demoVersion') !== String(DEMO_DATA_VERSION)) {
+      Object.keys(localStorage)
+        .filter((key) => key.startsWith('aurevon.') && !KEEP_ON_RESET.has(key))
+        .forEach((key) => localStorage.removeItem(key));
+      sessionStorage.removeItem('aurevon.draft');
+      localStorage.setItem('aurevon.demoVersion', String(DEMO_DATA_VERSION));
+    }
+  } catch {
+    /* storage unavailable — nothing cached to clear */
+  }
+}
+
 const bus = new EventTarget();
 const emit = (...topics: Topic[]) => topics.forEach((t) => bus.dispatchEvent(new Event(t)));
 const on = (topic: Topic, cb: () => void) => {
@@ -83,7 +104,7 @@ const loadVerifications = (): Record<string, CustomerVerification> => {
       dateOfBirth: '1990-06-14',
       licence: { number: loadProfile().licenseNumber, country: 'Nigeria', licenceClass: 'B', expiry: '2029-11-30', frontDoc: '', backDoc: '' },
       identity: { type: 'passport', number: 'A01234567', expiry: '2031-02-01', doc: '' },
-      employment: { ...seeded.employment, employer: 'Harrison & Co.', jobTitle: 'Director' },
+      employment: { ...seeded.employment, employer: 'Ibe & Co.', jobTitle: 'Director' },
       consent: true
     };
   }
@@ -178,7 +199,7 @@ let baseCars: Car[] = CARS_DATA;
 let carCache: Car[] = CARS_DATA;
 
 const SEED_REVIEWS: Review[] = [
-  { id: 'rv-4', carId: 'car-toyota-prado', bookingId: 'BK-51920', authorName: 'Alex H.', rating: 4, comment: 'Comfortable on the long drive and spotless inside. Pick-up took a little longer than expected.', createdAt: '2026-10-17T10:00:00Z', hidden: false }
+  { id: 'rv-4', carId: 'car-toyota-prado', bookingId: 'BK-51920', authorName: 'Rhaz I.', rating: 4, comment: 'Comfortable on the long drive and spotless inside. Pick-up took a little longer than expected.', createdAt: '2026-10-17T10:00:00Z', hidden: false }
 ];
 const loadReviews = () => readStored<Review[]>(K.reviews, SEED_REVIEWS);
 
